@@ -1,0 +1,97 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+/.pnp
+.pnp.js
+
+# =========================
+# Next.js build output
+# =========================
+.next/
+out/
+dist/
+build/
+
+# =========================
+# Environment files
+# =========================
+.env
+.env.local
+.env.*.local
+
+# =========================
+# Logs
+# =========================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# =========================
+# Cache & temp files
+# =========================
+.cache/
+.npm
+.eslintcache
+*.tmp
+*.temp
+
+# =========================
+# Runtime files
+# =========================
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS files (macOS / Windows)
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# =========================
+# Prisma
+# =========================
+*.db
+*.db-journal
+
+# NOTE:
+# prisma/schema.prisma is COMMITTED
+# prisma/migrations/ will be committed later when created
+
+# =========================
+# Vercel
+# =========================
+.vercel
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+next-env.d.ts
+
+# =========================
+# Package manager lock files
+# =========================
+yarn.lock
+pnpm-lock.yaml
+# package-lock.json  <-- committed (npm)
