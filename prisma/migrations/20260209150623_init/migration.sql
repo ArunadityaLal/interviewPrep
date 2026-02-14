@@ -149,3 +149,36 @@ ALTER TABLE "feedback" ADD CONSTRAINT "feedback_session_id_fkey" FOREIGN KEY ("s
 
 -- AddForeignKey
 ALTER TABLE "feedback" ADD CONSTRAINT "feedback_interviewer_id_fkey" FOREIGN KEY ("interviewer_id") REFERENCES "interviewer_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+
+-- Migration: Add Google OAuth support to User table
+-- Run this SQL script in your PostgreSQL database
+
+-- Step 1: Create AuthProvider enum type
+DO $$ BEGIN
+    CREATE TYPE "AuthProvider" AS ENUM ('EMAIL', 'GOOGLE');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- Step 2: Add new columns to users table
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS provider "AuthProvider" DEFAULT 'EMAIL',
+ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE;
+
+-- Step 3: Make password_hash nullable (for OAuth users)
+ALTER TABLE users 
+ALTER COLUMN password_hash DROP NOT NULL;
+
+-- Step 4: Create index for google_id for faster lookups
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+
+-- Step 5: Update existing users to have EMAIL provider
+UPDATE users 
+SET provider = 'EMAIL' 
+WHERE provider IS NULL;
+
+-- Verify the changes
+-- SELECT column_name, data_type, is_nullable 
+-- FROM information_schema.columns 
+-- WHERE table_name = 'users';
