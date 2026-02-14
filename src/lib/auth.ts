@@ -13,6 +13,10 @@ export interface JWTPayload {
   role: UserRole;
 }
 
+// ========================================
+// PASSWORD FUNCTIONS
+// ========================================
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
 }
@@ -20,6 +24,10 @@ export async function hashPassword(password: string): Promise<string> {
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash);
 }
+
+// ========================================
+// TOKEN FUNCTIONS (EXPORTED!)
+// ========================================
 
 export function generateToken(payload: JWTPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
@@ -32,6 +40,10 @@ export function verifyToken(token: string): JWTPayload | null {
     return null;
   }
 }
+
+// ========================================
+// COOKIE FUNCTIONS (EXPORTED!)
+// ========================================
 
 export async function setAuthCookie(token: string) {
   const cookieStore = await cookies();
@@ -46,7 +58,14 @@ export async function setAuthCookie(token: string) {
 
 export async function getAuthCookie(): Promise<string | undefined> {
   const cookieStore = await cookies();
-  return cookieStore.get('auth-token')?.value;
+  const cookie = cookieStore.get('auth-token');
+  
+  console.log('🔍 [getAuthCookie] Cookie exists:', !!cookie);
+  if (cookie) {
+    console.log('🔍 [getAuthCookie] Cookie value length:', cookie.value.length);
+  }
+  
+  return cookie?.value;
 }
 
 export async function removeAuthCookie() {
@@ -54,12 +73,34 @@ export async function removeAuthCookie() {
   cookieStore.delete('auth-token');
 }
 
-export async function getCurrentUser() {
-  const token = await getAuthCookie();
-  if (!token) return null;
+// ========================================
+// USER FUNCTIONS
+// ========================================
 
+export async function getCurrentUser() {
+  console.log('🔍 [getCurrentUser] Starting...');
+  
+  const token = await getAuthCookie();
+  
+  if (!token) {
+    console.log('❌ [getCurrentUser] No token found');
+    return null;
+  }
+
+  console.log('🔍 [getCurrentUser] Token found, verifying...');
+  
   const payload = verifyToken(token);
-  if (!payload) return null;
+  
+  if (!payload) {
+    console.log('❌ [getCurrentUser] Token verification failed');
+    return null;
+  }
+
+  console.log('🔍 [getCurrentUser] Token verified, payload:', {
+    userId: payload.userId,
+    email: payload.email,
+    role: payload.role
+  });
 
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
@@ -69,6 +110,18 @@ export async function getCurrentUser() {
     },
   });
 
+  if (user) {
+    console.log('✅ [getCurrentUser] User found:', {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      hasStudentProfile: !!user.studentProfile,
+      hasInterviewerProfile: !!user.interviewerProfile
+    });
+  } else {
+    console.log('❌ [getCurrentUser] User not found in database for userId:', payload.userId);
+  }
+
   return user;
 }
 
@@ -76,16 +129,26 @@ export function isAdminEmail(email: string): boolean {
   return ADMIN_EMAILS.includes(email);
 }
 
+// ========================================
+// AUTH MIDDLEWARE (EXPORTED!)
+// ========================================
+
 export async function requireAuth(allowedRoles?: UserRole[]) {
+  console.log('🔍 [requireAuth] Called with roles:', allowedRoles);
+  
   const user = await getCurrentUser();
   
   if (!user) {
+    console.log('❌ [requireAuth] No user, throwing Unauthorized');
     throw new Error('Unauthorized');
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
+    console.log('❌ [requireAuth] User role not allowed. User role:', user.role, 'Allowed:', allowedRoles);
     throw new Error('Forbidden');
   }
 
+  console.log('✅ [requireAuth] User authorized:', { id: user.id, role: user.role });
+  
   return user;
 }

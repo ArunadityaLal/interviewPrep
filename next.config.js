@@ -4,7 +4,7 @@ const nextConfig = {
   poweredByHeader: false,
   
   images: {
-    domains: ['localhost'],
+    domains: ['localhost', 'lh3.googleusercontent.com'],
     formats: ['image/avif', 'image/webp'],
   },
 

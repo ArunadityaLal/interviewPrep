@@ -1,16 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function StudentDashboardPage() {
+  const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [resumeError, setResumeError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [formData, setFormData] = useState({
     name: '',
     college: '',
@@ -32,16 +38,17 @@ export default function StudentDashboardPage() {
       ]);
 
       if (profileRes.ok) {
-        const profileData = await profileRes.json();
-        setProfile(profileData.profile);
-        if (profileData.profile) {
+        const data = await profileRes.json();
+        setUser(data.user);
+        setProfile(data.profile);
+        if (data.profile) {
           setFormData({
-            name: profileData.profile.name || '',
-            college: profileData.profile.college || '',
-            branch: profileData.profile.branch || '',
-            graduationYear: profileData.profile.graduationYear?.toString() || '',
-            targetRole: profileData.profile.targetRole || '',
-            experienceLevel: profileData.profile.experienceLevel || '',
+            name: data.profile.name || '',
+            college: data.profile.college || '',
+            branch: data.profile.branch || '',
+            graduationYear: data.profile.graduationYear?.toString() || '',
+            targetRole: data.profile.targetRole || '',
+            experienceLevel: data.profile.experienceLevel || '',
           });
         } else {
           setEditing(true);
@@ -77,6 +84,72 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowedTypes.includes(file.type)) {
+      setResumeError('Please upload a PDF, DOC, or DOCX file');
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setResumeError('File size must be less than 5MB');
+      return;
+    }
+
+    setResumeError('');
+    setUploadingResume(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('resume', file);
+
+      const res = await fetch('/api/student/upload-resume', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        await fetchData();
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } else {
+        const data = await res.json();
+        setResumeError(data.error || 'Failed to upload resume');
+      }
+    } catch (error) {
+      console.error('Failed to upload resume:', error);
+      setResumeError('Failed to upload resume');
+    } finally {
+      setUploadingResume(false);
+    }
+  };
+
+  const handleDeleteResume = async () => {
+    if (!confirm('Are you sure you want to delete your resume?')) return;
+
+    try {
+      const res = await fetch('/api/student/upload-resume', {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        await fetchData();
+      }
+    } catch (error) {
+      console.error('Failed to delete resume:', error);
+    }
+  };
+
+  const getResumeFileName = (url: string) => {
+    return url.split('/').pop() || 'resume';
+  };
+
   const upcomingSessions = sessions.filter(
     (s) => s.status === 'SCHEDULED' && new Date(s.scheduledTime) > new Date()
   );
@@ -86,11 +159,58 @@ export default function StudentDashboardPage() {
     return <div className="text-center py-12">Loading...</div>;
   }
 
+  const displayName = profile?.name || user?.name || user?.email?.split('@')[0] || 'Student';
+  const userInitials = displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+
   return (
     <div className="max-w-6xl mx-auto">
-      <h1 className="text-3xl font-display font-bold text-slate-900 mb-8">
-        Welcome back{profile?.name ? `, ${profile.name}` : ''}!
-      </h1>
+      {/* Header with Profile Picture */}
+      <div className="flex items-center gap-6 mb-8">
+        {/* Profile Picture */}
+        <div className="relative">
+          {user?.profilePicture ? (
+            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-lg ring-2 ring-indigo-100">
+              <Image
+                src={user.profilePicture}
+                alt={displayName}
+                width={96}
+                height={96}
+                className="object-cover"
+              />
+            </div>
+          ) : (
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg ring-2 ring-indigo-100">
+              {userInitials}
+            </div>
+          )}
+          {user?.provider === 'GOOGLE' && (
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md">
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+            </div>
+          )}
+        </div>
+
+        {/* Welcome Text */}
+        <div>
+          <h1 className="text-3xl font-display font-bold text-slate-900">
+            Welcome back, {displayName}!
+          </h1>
+          <p className="text-slate-600 mt-1">{user?.email}</p>
+          {user?.provider === 'GOOGLE' && (
+            <p className="text-sm text-indigo-600 mt-1 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Signed in with Google
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Profile Section */}
       <Card variant="elevated" className="p-8 mb-8">
@@ -176,6 +296,89 @@ export default function StudentDashboardPage() {
             </div>
           </div>
         ) : null}
+
+        {/* Resume Upload Section */}
+        {profile && (
+          <div className="mt-8 pt-8 border-t border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Resume</h3>
+            
+            {profile.resumeUrl ? (
+              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-white">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-900">Resume uploaded</p>
+                    <p className="text-sm text-slate-600">{getResumeFileName(profile.resumeUrl)}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <a
+                    href={profile.resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+                  >
+                    View
+                  </a>
+                  <button
+                    onClick={handleDeleteResume}
+                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-indigo-400 transition-colors">
+                <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
+                <h4 className="text-lg font-medium text-slate-900 mb-2">Upload your resume</h4>
+                <p className="text-sm text-slate-600 mb-4">
+                  PDF, DOC, or DOCX (max 5MB)
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleResumeUpload}
+                  disabled={uploadingResume}
+                  className="hidden"
+                  id="resume-upload"
+                />
+                <label htmlFor="resume-upload">
+                  <Button
+                    type="button"
+                    disabled={uploadingResume}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="cursor-pointer"
+                  >
+                    {uploadingResume ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Uploading...
+                      </span>
+                    ) : (
+                      'Choose File'
+                    )}
+                  </Button>
+                </label>
+                {resumeError && (
+                  <p className="text-sm text-red-600 mt-2">{resumeError}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Quick Stats */}

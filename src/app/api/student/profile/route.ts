@@ -6,11 +6,26 @@ export async function GET() {
   try {
     const user = await requireAuth(['STUDENT']);
 
+    // Fetch user data with profile
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        profilePicture: true,
+        provider: true,
+      },
+    });
+
     const profile = await prisma.studentProfile.findUnique({
       where: { userId: user.id },
     });
 
-    return NextResponse.json({ profile });
+    return NextResponse.json({ 
+      user: userData,
+      profile 
+    });
   } catch (error: any) {
     console.error('Get student profile error:', error);
     return NextResponse.json(
@@ -55,7 +70,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ profile });
+    // Fetch updated user data
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        profilePicture: true,
+        provider: true,
+      },
+    });
+
+    return NextResponse.json({ 
+      user: userData,
+      profile 
+    });
   } catch (error: any) {
     console.error('Create/update student profile error:', error);
     return NextResponse.json(

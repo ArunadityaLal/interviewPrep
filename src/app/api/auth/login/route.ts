@@ -17,7 +17,13 @@ export async function POST(request: NextRequest) {
     // Find user
     const user = await prisma.user.findUnique({
       where: { email },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        role: true,
+        provider: true,
+        emailVerified: true,
         studentProfile: true,
         interviewerProfile: true,
       },
@@ -31,11 +37,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify password
+    if (!user.passwordHash) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      );
+    }
+    
     const isValid = await verifyPassword(password, user.passwordHash);
     if (!isValid) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
+      );
+    }
+
+    // ========================================
+    // EMAIL VERIFICATION CHECK (NEW)
+    // ========================================
+    // Only check email verification for EMAIL provider (not Google OAuth)
+    if (user.provider === 'EMAIL' && !user.emailVerified) {
+      return NextResponse.json(
+        { 
+          error: 'Please verify your email before logging in',
+          requiresVerification: true,
+          email: user.email,
+        },
+        { status: 403 }
       );
     }
 
