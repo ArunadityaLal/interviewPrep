@@ -7,14 +7,8 @@ import { requireAuth } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // Use your existing requireAuth function
-    const user = await requireAuth(['STUDENT']);
-    
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { userId } = await requireAuth(['STUDENT']);
 
-    // Parse form data
     const formData = await request.formData();
     const file = formData.get('resume') as File;
 
@@ -22,13 +16,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    // Validate file type
     const allowedTypes = [
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
-    
+
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
         { error: 'Invalid file type. Only PDF, DOC, and DOCX files are allowed.' },
@@ -36,7 +29,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file size (5MB max)
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       return NextResponse.json(
@@ -45,28 +37,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create uploads directory if it doesn't exist
     const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'resumes');
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true });
     }
 
-    // Generate unique filename
     const timestamp = Date.now();
     const fileExtension = path.extname(file.name);
-    const fileName = `resume_${user.id}_${timestamp}${fileExtension}`;
+    const fileName = `resume_${userId}_${timestamp}${fileExtension}`;
     const filePath = path.join(uploadsDir, fileName);
 
-    // Save file
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     await writeFile(filePath, buffer);
 
-    // Update database
     const resumeUrl = `/uploads/resumes/${fileName}`;
-    
+
     await prisma.studentProfile.update({
-      where: { userId: user.id },
+      where: { userId },
       data: { resumeUrl },
     });
 
@@ -87,16 +75,10 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Use your existing requireAuth function
-    const user = await requireAuth(['STUDENT']);
-    
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { userId } = await requireAuth(['STUDENT']);
 
-    // Get current resume URL
     const profile = await prisma.studentProfile.findUnique({
-      where: { userId: user.id },
+      where: { userId },
       select: { resumeUrl: true },
     });
 
@@ -104,16 +86,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'No resume found' }, { status: 404 });
     }
 
-    // Delete file from filesystem
     const filePath = path.join(process.cwd(), 'public', profile.resumeUrl);
     if (existsSync(filePath)) {
       const fs = require('fs');
       fs.unlinkSync(filePath);
     }
 
-    // Update database
     await prisma.studentProfile.update({
-      where: { userId: user.id },
+      where: { userId },
       data: { resumeUrl: null },
     });
 

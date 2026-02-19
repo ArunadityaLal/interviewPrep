@@ -15,7 +15,7 @@ export default function HomePage() {
               InterviewPrep<span className="text-indigo-400">Live</span>
             </span>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-center">
             <Link href="/login/student">
               <Button variant="ghost" className="text-white hover:bg-white/10">
                 Student Login
@@ -24,6 +24,11 @@ export default function HomePage() {
             <Link href="/login/interviewer">
               <Button variant="ghost" className="text-white hover:bg-white/10">
                 Interviewer Login
+              </Button>
+            </Link>
+            <Link href="/login/admin">
+              <Button variant="ghost" className="text-red-400 hover:bg-red-500/10 border border-red-500/30">
+                🛡️ Admin
               </Button>
             </Link>
           </div>
@@ -51,75 +56,19 @@ export default function HomePage() {
             Connect with industry experts for personalized guidance sessions and realistic
             mock interviews. Get detailed feedback and level up your interview skills.
           </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+
+          <div className="flex gap-4 justify-center">
             <Link href="/signup/student">
-              <Button size="lg" className="w-full sm:w-auto min-w-[200px]">
+              <Button size="lg" className="bg-indigo-600 hover:bg-indigo-700 text-white px-8">
                 Get Started as Student
               </Button>
             </Link>
             <Link href="/signup/interviewer">
-              <Button 
-                size="lg" 
-                variant="secondary"
-                className="w-full sm:w-auto min-w-[200px] bg-white/10 text-white hover:bg-white/20 border border-white/20"
-              >
+              <Button size="lg" variant="secondary" className="px-8">
                 Join as Interviewer
               </Button>
             </Link>
           </div>
-        </div>
-
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-8 mt-32">
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-            <div className="w-14 h-14 bg-indigo-500/20 rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-7 h-7 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-display font-semibold text-white mb-2">
-              Expert Mentors
-            </h3>
-            <p className="text-slate-400">
-              Learn from professionals at top tech companies with years of interview experience
-            </p>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-            <div className="w-14 h-14 bg-violet-500/20 rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-7 h-7 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-display font-semibold text-white mb-2">
-              Real Interviews
-            </h3>
-            <p className="text-slate-400">
-              Experience actual interview conditions with detailed performance feedback
-            </p>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-            <div className="w-14 h-14 bg-pink-500/20 rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-7 h-7 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-display font-semibold text-white mb-2">
-              Instant Booking
-            </h3>
-            <p className="text-slate-400">
-              Choose your preferred time slot and get matched with the perfect interviewer
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-white/10 py-8">
-        <div className="max-w-7xl mx-auto px-6 text-center text-slate-400">
-          <p>© 2026 InterviewPrep Live. All rights reserved.</p>
         </div>
       </div>
     </div>

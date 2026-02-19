@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifyToken } from './lib/auth';
+import { verifyToken } from './auth';
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get('auth-token')?.value;
   const { pathname } = request.nextUrl;
 
   // Public routes
-  const publicRoutes = ['/', '/login/student', '/login/interviewer', '/signup/student', '/signup/interviewer'];
+  const publicRoutes = [
+    '/',
+    '/login/student',
+    '/login/interviewer',
+    '/login/admin',           // ← added
+    '/signup/student',
+    '/signup/interviewer',
+  ];
+
   if (publicRoutes.includes(pathname)) {
     // If authenticated, redirect to appropriate dashboard
     if (token) {
