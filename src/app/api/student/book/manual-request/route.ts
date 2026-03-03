@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       where: { userId },
       include: { 
         user: { select: { email: true, name: true } },
-        preferredInterviewerUnlocked: true,
+        // preferredInterviewerUnlocked: true,
       },
     });
     if (!student) {
