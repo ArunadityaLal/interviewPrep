@@ -31,6 +31,8 @@ export async function GET() {
             interviewsLimit: true,
             guidanceLimit: true,
             planExpiresAt: true,
+            // ✅ Unlock field — required for Choose Interviewer feature
+            preferredInterviewerUnlocked: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -103,7 +105,6 @@ export async function POST(request: NextRequest) {
           graduationYear: graduationYear ? parseInt(graduationYear) : null,
           targetRole,
           experienceLevel,
-          // defaults: FREE plan, 5 each, 0 used — from schema defaults
         },
       }),
       prisma.user.findUnique({

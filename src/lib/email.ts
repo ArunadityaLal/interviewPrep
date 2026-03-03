@@ -859,3 +859,285 @@ export async function sendReminderToInterviewer(data: BookingEmailData): Promise
     console.error('❌ Failed to send interviewer reminder:', err);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MANUAL BOOKING EMAILS  (append to bottom of src/lib/email.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { SessionType } from '@prisma/client';
+
+interface ManualBookingReceivedData {
+  studentName: string;
+  studentEmail: string;
+  sessionType: SessionType;
+  preferredInterviewerName?: string;
+  requestId: number;
+}
+
+interface ManualBookingAssignedData {
+  studentName: string;
+  studentEmail: string;
+  sessionType: SessionType;
+  interviewerName: string;
+  interviewerEmail: string;
+  interviewerCompanies?: string[];
+  interviewerYearsOfExperience?: number | null;
+  interviewerLinkedinUrl?: string | null;
+  scheduledTime: Date;
+  durationMinutes: number;
+  role?: string | null;
+  difficulty?: string | null;
+  interviewType?: string | null;
+  topic?: string | null;
+  sessionId: number;
+}
+
+// ── 1. Email sent to student right after they submit the manual request ───────
+export async function sendManualBookingReceivedToStudent(
+  data: ManualBookingReceivedData
+): Promise<void> {
+  const appName = process.env.NEXT_PUBLIC_APP_NAME || 'InterviewPrep Live';
+  const sessionLabel = data.sessionType === 'INTERVIEW' ? 'Mock Interview' : 'Guidance Session';
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f0f0ff;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0ff;padding:48px 16px;">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0"
+  style="max-width:580px;width:100%;border-radius:24px;overflow:hidden;
+         box-shadow:0 20px 60px rgba(109,40,217,0.18);">
+  <tr><td style="height:4px;background:linear-gradient(90deg,#818cf8,#c084fc,#f472b6,#c084fc,#818cf8);"></td></tr>
+  <tr>
+    <td style="background:linear-gradient(140deg,#3730a3,#6d28d9,#7c3aed);
+               padding:36px 48px 28px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:24px;font-weight:900;color:#ffffff;">
+        InterviewPrep<span style="color:#c4b5fd;">Live</span>
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#ffffff;padding:44px 48px;text-align:center;">
+      <p style="font-size:40px;margin:0 0 8px;">📬</p>
+      <h1 style="margin:0 0 12px;font-size:24px;font-weight:900;color:#1e1b4b;">
+        Request Received!
+      </h1>
+      <p style="font-size:15px;color:#4b5563;line-height:1.7;margin:0 0 28px;">
+        Hi <strong>${data.studentName}</strong>, your <strong>${sessionLabel}</strong> request
+        has been received. Our admin team will review and assign the best interviewer for you shortly.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="border:1px solid #ede9fe;border-radius:12px;overflow:hidden;margin-bottom:28px;">
+        <tr>
+          <td style="padding:14px 20px;background:#f8faff;font-size:13px;color:#6b7280;
+                     width:40%;border-right:1px solid #ede9fe;border-bottom:1px solid #ede9fe;">
+            Request ID
+          </td>
+          <td style="padding:14px 20px;background:#f8faff;font-size:14px;
+                     color:#111827;font-weight:700;border-bottom:1px solid #ede9fe;">
+            #${data.requestId}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 20px;background:#fff;font-size:13px;color:#6b7280;
+                     border-right:1px solid #ede9fe;border-bottom:1px solid #ede9fe;">
+            Session Type
+          </td>
+          <td style="padding:14px 20px;background:#fff;font-size:14px;
+                     color:#111827;font-weight:700;border-bottom:1px solid #ede9fe;">
+            ${sessionLabel}
+          </td>
+        </tr>
+        ${data.preferredInterviewerName ? `
+        <tr>
+          <td style="padding:14px 20px;background:#f8faff;font-size:13px;color:#6b7280;
+                     border-right:1px solid #ede9fe;">
+            Preferred Interviewer
+          </td>
+          <td style="padding:14px 20px;background:#f8faff;font-size:14px;
+                     color:#111827;font-weight:700;">
+            ${data.preferredInterviewerName}
+          </td>
+        </tr>` : ''}
+      </table>
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;
+                  padding:16px 20px;text-align:left;margin-bottom:28px;">
+        <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">
+          ⏳ <strong>What's next?</strong> Our admin will assign you a company-specific interviewer
+          and you'll receive another email with all the session details. This usually takes
+          a few hours.
+        </p>
+      </div>
+      <p style="font-size:13px;color:#9ca3af;margin:0;">
+        This is an automated email. Please do not reply.
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#1e1b4b;padding:20px 48px;text-align:center;">
+      <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.4);">
+        © ${new Date().getFullYear()} ${appName}. All rights reserved.
+      </p>
+    </td>
+  </tr>
+</table>
+</td></tr></table>
+</body>
+</html>`;
+
+  try {
+    await transporter.sendMail({
+      from: `"${appName}" <${process.env.SMTP_USER}>`,
+      to: data.studentEmail,
+      subject: `📬 Request Received — Admin Will Assign Your Interviewer Soon`,
+      html,
+      text: `Hi ${data.studentName},\n\nYour ${sessionLabel} request (#${data.requestId}) has been received. Admin will assign your interviewer shortly and you'll receive another email.\n\nThank you,\n${appName}`,
+    });
+    console.log(`✅ Manual booking received email sent to: ${data.studentEmail}`);
+  } catch (err) {
+    console.error('❌ Failed to send manual booking received email:', err);
+  }
+}
+
+// ── 2. Email sent to student after admin assigns an interviewer ───────────────
+export async function sendManualBookingAssignedToStudent(
+  data: ManualBookingAssignedData
+): Promise<void> {
+  const appName = process.env.NEXT_PUBLIC_APP_NAME || 'InterviewPrep Live';
+  const sessionLabel = data.sessionType === 'INTERVIEW' ? 'Mock Interview' : 'Guidance Session';
+
+  const start = new Date(data.scheduledTime);
+  const end   = new Date(start.getTime() + data.durationMinutes * 60_000);
+
+  const dateStr  = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  }).format(start);
+
+  const startStr = new Intl.DateTimeFormat('en-IN', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata', timeZoneName: 'short',
+  }).format(start);
+
+  const endStr = new Intl.DateTimeFormat('en-IN', {
+    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata', timeZoneName: 'short',
+  }).format(end);
+
+  const sessionRows = [
+    { label: 'Session Type', value: sessionLabel },
+    ...(data.role ? [{ label: 'Role', value: data.role }] : []),
+    ...(data.difficulty ? [{ label: 'Difficulty', value: data.difficulty }] : []),
+    ...(data.interviewType ? [{ label: 'Interview Type', value: data.interviewType }] : []),
+    ...(data.topic ? [{ label: 'Topic', value: data.topic }] : []),
+    { label: 'Duration', value: `${data.durationMinutes} minutes` },
+    { label: 'Date', value: dateStr },
+    { label: 'Time', value: `${startStr} – ${endStr}` },
+    { label: 'Status', value: '✅ Confirmed' },
+  ];
+
+  const interviewerRows = [
+    { label: 'Name', value: data.interviewerName },
+    { label: 'Email', value: data.interviewerEmail },
+    ...(data.interviewerCompanies?.length
+      ? [{ label: 'Companies', value: data.interviewerCompanies.join(', ') }]
+      : []),
+    ...(data.interviewerYearsOfExperience
+      ? [{ label: 'Experience', value: `${data.interviewerYearsOfExperience} years` }]
+      : []),
+    ...(data.interviewerLinkedinUrl
+      ? [{ label: 'LinkedIn', value: data.interviewerLinkedinUrl }]
+      : []),
+  ];
+
+  const buildRows = (rows: { label: string; value: string }[]) =>
+    rows.map((r, i) => {
+      const bg = i % 2 === 0 ? '#ffffff' : '#f8faff';
+      const border = i < rows.length - 1 ? 'border-bottom:1px solid #ede9fe;' : '';
+      return `<tr>
+        <td style="padding:13px 20px;background:${bg};font-size:13px;color:#6b7280;
+                   font-weight:500;width:38%;border-right:1px solid #ede9fe;${border}">${r.label}</td>
+        <td style="padding:13px 20px;background:${bg};font-size:13.5px;color:#111827;
+                   font-weight:700;${border}">${r.value}</td>
+      </tr>`;
+    }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f0f0ff;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0ff;padding:48px 16px;">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0"
+  style="max-width:580px;width:100%;border-radius:24px;overflow:hidden;
+         box-shadow:0 20px 60px rgba(109,40,217,0.18);">
+  <tr><td style="height:4px;background:linear-gradient(90deg,#818cf8,#c084fc,#f472b6,#c084fc,#818cf8);"></td></tr>
+  <tr>
+    <td style="background:linear-gradient(140deg,#3730a3,#6d28d9,#7c3aed);
+               padding:36px 48px 28px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:24px;font-weight:900;color:#ffffff;">
+        InterviewPrep<span style="color:#c4b5fd;">Live</span>
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#ffffff;padding:44px 48px;">
+      <p style="font-size:40px;margin:0 0 8px;text-align:center;">🎯</p>
+      <h1 style="margin:0 0 8px;font-size:24px;font-weight:900;color:#1e1b4b;text-align:center;">
+        Interviewer Assigned!
+      </h1>
+      <p style="font-size:14px;color:#4b5563;line-height:1.7;text-align:center;margin:0 0 28px;">
+        Hi <strong>${data.studentName}</strong>, great news! Admin has assigned your
+        <strong>${sessionLabel}</strong>. Here are your session details:
+      </p>
+
+      <p style="font-size:13px;font-weight:700;color:#6d28d9;text-transform:uppercase;
+                letter-spacing:1px;margin:0 0 8px;">📋 Session Details</p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="border:1px solid #ede9fe;border-radius:12px;overflow:hidden;margin-bottom:24px;">
+        ${buildRows(sessionRows)}
+      </table>
+
+      <p style="font-size:13px;font-weight:700;color:#6d28d9;text-transform:uppercase;
+                letter-spacing:1px;margin:0 0 8px;">👤 Your Interviewer</p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+        style="border:1px solid #ede9fe;border-radius:12px;overflow:hidden;margin-bottom:28px;">
+        ${buildRows(interviewerRows)}
+      </table>
+
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;
+                  padding:16px 20px;margin-bottom:28px;">
+        <p style="margin:0;font-size:13px;color:#166534;line-height:1.6;">
+          🚀 <strong>Tip:</strong> Prepare well before your session! Review the topic, keep your
+          questions ready, and join on time. You got this!
+        </p>
+      </div>
+      <p style="font-size:13px;color:#9ca3af;text-align:center;margin:0;">
+        This is an automated email. Please do not reply.
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#1e1b4b;padding:20px 48px;text-align:center;">
+      <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.4);">
+        © ${new Date().getFullYear()} ${appName}. All rights reserved.
+      </p>
+    </td>
+  </tr>
+</table>
+</td></tr></table>
+</body>
+</html>`;
+
+  try {
+    await transporter.sendMail({
+      from: `"${appName}" <${process.env.SMTP_USER}>`,
+      to: data.studentEmail,
+      subject: `🎯 Interviewer Assigned — ${sessionLabel} on ${dateStr}`,
+      html,
+      text: `Hi ${data.studentName},\n\nYour ${sessionLabel} has been confirmed.\n\nInterviewer: ${data.interviewerName} (${data.interviewerEmail})\nDate: ${dateStr}\nTime: ${startStr} – ${endStr}\nDuration: ${data.durationMinutes} min\n\nBest of luck!\n${appName}`,
+    });
+    console.log(`✅ Assignment email sent to student: ${data.studentEmail}`);
+  } catch (err) {
+    console.error('❌ Failed to send assignment email:', err);
+  }
+}
