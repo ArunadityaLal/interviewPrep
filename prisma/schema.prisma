@@ -129,6 +129,8 @@ model Session {
   feedback        Feedback?
   interviewer     InterviewerProfile @relation(fields: [interviewerId], references: [id], onDelete: Cascade)
   student         StudentProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // In Session model, add:
+  reminderSent  Boolean  @default(false) @map("reminder_sent")
 
   @@map("sessions")
 }
