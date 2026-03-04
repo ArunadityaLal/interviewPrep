@@ -10,13 +10,33 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// ── Helper: upload buffer to Cloudinary using base64 (Vercel-safe) ────────────
+async function uploadBufferToCloudinary(
+  buffer: Buffer,
+  publicId: string,
+  resourceType: 'raw' | 'image' = 'image',
+): Promise<string> {
+  const base64 = buffer.toString('base64');
+  const dataUri = `data:image/jpeg;base64,${base64}`;
+
+  const result = await cloudinary.uploader.upload(dataUri, {
+    resource_type: resourceType,
+    public_id:     publicId,
+    overwrite:     true,
+    transformation: [
+      { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  });
+
+  return result.secure_url;
+}
+
 /**
  * POST /api/interviewer/upload-profile-picture
  *
  * Uploads the photo to Cloudinary and stores the URL in the database.
- *
- * Previously stored as base64 in DB — now uses Cloudinary for permanent
- * cloud storage that works on Vercel, Railway, Fly.io etc.
+ * Uses base64 upload method which is fully compatible with Vercel serverless.
  *
  * Limit: 5MB file size.
  */
@@ -55,7 +75,7 @@ export async function POST(request: NextRequest) {
       select: { profilePicture: true },
     });
 
-    if (existingUser?.profilePicture && existingUser.profilePicture.includes('cloudinary.com')) {
+    if (existingUser?.profilePicture?.includes('cloudinary.com')) {
       try {
         const oldPublicId = existingUser.profilePicture
           .split('/upload/')[1]
@@ -69,29 +89,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Upload to Cloudinary ──────────────────────────────────────────────────
+    // ── Upload to Cloudinary (base64 method — works on Vercel) ───────────────
     const buffer = Buffer.from(await file.arrayBuffer());
-
-    const uploadResult = await new Promise<any>((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        {
-          resource_type: 'image',
-          public_id: `profile-pictures/user_${userId}`,
-          overwrite: true,
-          folder: 'profile-pictures',
-          transformation: [
-            { width: 400, height: 400, crop: 'fill', gravity: 'face' }, // auto crop to face
-            { quality: 'auto', fetch_format: 'auto' },                  // auto optimize
-          ],
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      ).end(buffer);
-    });
-
-    const profilePicture = uploadResult.secure_url;
+    const profilePicture = await uploadBufferToCloudinary(
+      buffer,
+      `profile-pictures/user_${userId}`,
+      'image',
+    );
 
     console.log(`✅ Profile photo uploaded to Cloudinary for user ${userId}`);
 

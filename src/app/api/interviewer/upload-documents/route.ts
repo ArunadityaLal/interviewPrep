@@ -10,26 +10,23 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ── Helper: upload a buffer to Cloudinary ─────────────────────────────────────
-async function uploadToCloudinary(
+// ── Helper: upload buffer to Cloudinary using base64 (Vercel-safe) ────────────
+async function uploadBufferToCloudinary(
   buffer: Buffer,
   publicId: string,
   resourceType: 'raw' | 'image' = 'raw',
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        resource_type: resourceType,
-        public_id: publicId,
-        overwrite: true,
-        folder: 'interviewer-docs',
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result!.secure_url);
-      }
-    ).end(buffer);
+  const base64 = buffer.toString('base64');
+  const mimePrefix = resourceType === 'image' ? 'image/jpeg' : 'application/octet-stream';
+  const dataUri = `data:${mimePrefix};base64,${base64}`;
+
+  const result = await cloudinary.uploader.upload(dataUri, {
+    resource_type: resourceType,
+    public_id:     publicId,
+    overwrite:     true,
   });
+
+  return result.secure_url;
 }
 
 // ── Helper: delete from Cloudinary safely ────────────────────────────────────
@@ -93,12 +90,12 @@ export async function POST(request: NextRequest) {
       }
 
       // Delete old resume from Cloudinary
-      if (existing?.resumeUrl) {
+      if (existing?.resumeUrl?.includes('cloudinary.com')) {
         await deleteFromCloudinary(existing.resumeUrl, 'raw');
       }
 
       const buffer = Buffer.from(await resumeFile.arrayBuffer());
-      updateData.resumeUrl = await uploadToCloudinary(
+      updateData.resumeUrl = await uploadBufferToCloudinary(
         buffer,
         `interviewer-docs/resume_${userId}_${Date.now()}`,
         'raw',
@@ -120,16 +117,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Determine resource type — images vs docs
       const isImage = ['image/jpeg', 'image/png', 'image/webp'].includes(idCardFile.type);
 
       // Delete old ID card from Cloudinary
-      if (existing?.idCardUrl) {
+      if (existing?.idCardUrl?.includes('cloudinary.com')) {
         await deleteFromCloudinary(existing.idCardUrl, isImage ? 'image' : 'raw');
       }
 
       const buffer = Buffer.from(await idCardFile.arrayBuffer());
-      updateData.idCardUrl = await uploadToCloudinary(
+      updateData.idCardUrl = await uploadBufferToCloudinary(
         buffer,
         `interviewer-docs/idcard_${userId}_${Date.now()}`,
         isImage ? 'image' : 'raw',

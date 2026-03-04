@@ -11,6 +11,40 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// ── Helper: upload buffer to Cloudinary using base64 (Vercel-safe) ────────────
+async function uploadBufferToCloudinary(
+  buffer: Buffer,
+  publicId: string,
+  resourceType: 'raw' | 'image' = 'raw',
+): Promise<string> {
+  const base64 = buffer.toString('base64');
+  const mimePrefix = resourceType === 'image' ? 'image/jpeg' : 'application/octet-stream';
+  const dataUri = `data:${mimePrefix};base64,${base64}`;
+
+  const result = await cloudinary.uploader.upload(dataUri, {
+    resource_type: resourceType,
+    public_id:     publicId,
+    overwrite:     true,
+  });
+
+  return result.secure_url;
+}
+
+// ── Helper: delete from Cloudinary safely ─────────────────────────────────────
+async function deleteFromCloudinary(url: string, resourceType: 'raw' | 'image' = 'raw') {
+  try {
+    const publicId = url
+      .split('/upload/')[1]
+      ?.replace(/^v\d+\//, '')
+      ?.replace(/\.[^/.]+$/, '');
+    if (publicId) {
+      await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+    }
+  } catch (e) {
+    console.warn('Could not delete old file from Cloudinary:', e);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(['STUDENT']);
@@ -65,46 +99,17 @@ export async function POST(request: NextRequest) {
       .replace(/[^a-zA-Z0-9\s]/g, '')
       .replace(/\s+/g, '_');
 
-    const fileExtension = path.extname(file.name); // .pdf / .doc / .docx
-    const publicId = `resumes/${safeName}_resume_${userId}`;
+    const publicId = `student-resumes/${safeName}_resume_${userId}`;
 
-    // ── Delete old Cloudinary file if exists ──────────────────────────────
-    if (studentProfile?.resumeUrl) {
-      try {
-        // Extract public_id from old URL
-        const oldPublicId = studentProfile.resumeUrl
-          .split('/upload/')[1]
-          ?.replace(/^v\d+\//, '')   // strip version
-          ?.replace(/\.[^/.]+$/, ''); // strip extension
-        if (oldPublicId) {
-          await cloudinary.uploader.destroy(oldPublicId, { resource_type: 'raw' });
-        }
-      } catch (e) {
-        console.warn('Could not delete old resume from Cloudinary:', e);
-      }
+    // ── Delete old resume from Cloudinary ─────────────────────────────────
+    if (studentProfile?.resumeUrl?.includes('cloudinary.com')) {
+      await deleteFromCloudinary(studentProfile.resumeUrl, 'raw');
     }
 
-    // ── Upload to Cloudinary ───────────────────────────────────────────────
+    // ── Upload to Cloudinary (base64 method — works on Vercel) ────────────
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-
-    const uploadResult = await new Promise<any>((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        {
-          resource_type: 'raw',          // PDFs/docs must use 'raw'
-          public_id: publicId,
-          overwrite: true,
-          folder: 'student-resumes',
-          format: fileExtension.replace('.', ''),
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      ).end(buffer);
-    });
-
-    const resumeUrl = uploadResult.secure_url;
+    const resumeUrl = await uploadBufferToCloudinary(buffer, publicId, 'raw');
 
     await prisma.studentProfile.update({
       where: { userId },
@@ -140,16 +145,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     // ── Delete from Cloudinary ─────────────────────────────────────────────
-    try {
-      const oldPublicId = profile.resumeUrl
-        .split('/upload/')[1]
-        ?.replace(/^v\d+\//, '')
-        ?.replace(/\.[^/.]+$/, '');
-      if (oldPublicId) {
-        await cloudinary.uploader.destroy(oldPublicId, { resource_type: 'raw' });
-      }
-    } catch (e) {
-      console.warn('Could not delete resume from Cloudinary:', e);
+    if (profile.resumeUrl.includes('cloudinary.com')) {
+      await deleteFromCloudinary(profile.resumeUrl, 'raw');
     }
 
     await prisma.studentProfile.update({

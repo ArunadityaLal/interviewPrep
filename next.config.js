@@ -1,11 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // your existing config...
+  api: {
+    bodyParser: {
+      sizeLimit: '6mb',
+    },
+  },
   images: {
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
         port: '',
         pathname: '/**',
       },
