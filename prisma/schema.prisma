@@ -50,6 +50,8 @@ model StudentProfile {
   sessions        Session[]
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   subscriptions   Subscription[]
+  preferredInterviewerUnlocked Boolean @default(false) @map("preferred_interviewer_unlocked")
+  manualBookingRequests        ManualBookingRequest[]
 
   @@map("student_profiles")
 }
@@ -96,6 +98,7 @@ model InterviewerProfile {
   feedback              Feedback[]
   user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessions              Session[]
+  manualBookingRequests ManualBookingRequest[]
 
   @@map("interviewer_profiles")
 }
@@ -129,6 +132,9 @@ model Session {
   feedback        Feedback?
   interviewer     InterviewerProfile @relation(fields: [interviewerId], references: [id], onDelete: Cascade)
   student         StudentProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // In Session model, add:
+  reminderSent  Boolean  @default(false) @map("reminder_sent")
+  manualBookingRequest ManualBookingRequest?
 
   @@map("sessions")
 }
@@ -171,7 +177,35 @@ model PendingUser {
   @@index([verificationToken], map: "idx_pending_users_verification_token")
   @@map("pending_users")
 }
+model ManualBookingRequest {
+  id                   Int                   @id @default(autoincrement())
+  studentId            Int                   @map("student_id")
+  preferredInterviewerId Int?                @map("preferred_interviewer_id")
+  topic                String?
+  role                 String?
+  difficulty           DifficultyLevel?
+  interviewType        InterviewType?        @map("interview_type")
+  sessionType          SessionType           @map("session_type")
+  status               ManualBookingStatus   @default(PENDING)
+  razorpayOrderId      String?               @unique @map("razorpay_order_id")
+  razorpayPaymentId    String?               @unique @map("razorpay_payment_id")
+  razorpaySignature    String?               @map("razorpay_signature")
+  paymentStatus        PaymentStatus         @default(PENDING) @map("payment_status")
+  sessionId            Int?                  @unique @map("session_id")
+  notes                String?
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  student              StudentProfile        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  preferredInterviewer InterviewerProfile?   @relation(fields: [preferredInterviewerId], references: [id])
+  session              Session?              @relation(fields: [sessionId], references: [id])
 
+  @@map("manual_booking_requests")
+}
+enum ManualBookingStatus {
+  PENDING
+  ASSIGNED
+  CANCELLED
+}
 enum UserRole {
   STUDENT
   INTERVIEWER
