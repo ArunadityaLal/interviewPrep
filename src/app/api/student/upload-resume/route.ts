@@ -112,11 +112,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3MB limit — base64 encoding adds ~33% overhead, keeping total under Vercel's 4.5MB limit
-    const maxSize = 3 * 1024 * 1024;
+    // 5MB limit — base64 encoding adds ~33% overhead, keeping total under Vercel's 4.5MB limit
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File size too large. Maximum size is 3MB.' },
+        { error: 'File size too large. Maximum size is 5MB.' },
         { status: 400 },
       );
     }
