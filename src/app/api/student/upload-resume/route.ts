@@ -26,7 +26,6 @@ async function uploadToCloudinary(
 
   // ── Build multipart form ──────────────────────────────────────────────────
   const formData = new FormData();
-  // Node's Buffer isn't directly a BlobPart; convert to a Uint8Array view
   const blob = new Blob([new Uint8Array(buffer)], { type: 'application/octet-stream' });
   formData.append('file', blob, filename);
   formData.append('public_id',  filename);
@@ -113,10 +112,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // 3MB limit — base64 encoding adds ~33% overhead, keeping total under Vercel's 4.5MB limit
+    const maxSize = 3 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File size too large. Maximum size is 5MB.' },
+        { error: 'File size too large. Maximum size is 3MB.' },
         { status: 400 },
       );
     }
