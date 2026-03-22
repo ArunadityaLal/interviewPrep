@@ -1,4 +1,3 @@
-// src/app/api/coding/submissions/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, authErrorStatus } from '@/lib/auth';
@@ -10,7 +9,7 @@ export async function GET(request: NextRequest) {
     const questionId = searchParams.get('questionId');
 
     const studentProfile = await prisma.studentProfile.findUnique({
-      where: { userId: userId as any },
+      where:  { userId: userId as any },
       select: { id: true },
     });
     if (!studentProfile) {
@@ -24,8 +23,18 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { createdAt: 'desc' },
       take: 20,
-      include: {
-        question: { select: { title: true, slug: true, difficulty: true } },
+      select: {
+        id:          true,
+        status:      true,
+        language:    true,
+        code:        true,          // ← include code
+        testsPassed: true,
+        totalTests:  true,
+        runtime:     true,
+        createdAt:   true,
+        question: {
+          select: { title: true, slug: true, difficulty: true },
+        },
       },
     });
 

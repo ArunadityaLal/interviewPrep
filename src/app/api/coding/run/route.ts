@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { requireAuth, authErrorStatus } from '@/lib/auth';
 import { exec } from 'child_process';
 import { writeFile, unlink, mkdir } from 'fs/promises';
@@ -6,7 +7,6 @@ import { existsSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
-// ─── Helper: promisified exec with stdin support ──────────────────────────────
 function execAsync(
   cmd: string,
   opts: { timeout?: number; input?: string } = {},
@@ -16,11 +16,7 @@ function execAsync(
       cmd,
       { timeout: opts.timeout ?? 10_000, windowsHide: true },
       (err, stdout, stderr) => {
-        resolve({
-          stdout: stdout || '',
-          stderr: stderr || '',
-          code:   err?.code ?? 0,
-        });
+        resolve({ stdout: stdout || '', stderr: stderr || '', code: err?.code ?? 0 });
       },
     );
     if (opts.input && child.stdin) {
@@ -36,56 +32,37 @@ async function ensureTmpDir(): Promise<string> {
   return dir;
 }
 
-// ─── Run C / C++ locally ──────────────────────────────────────────────────────
 async function runCpp(
   code: string,
   language: 'c' | 'cpp',
   stdin: string,
 ): Promise<{ output: string; error: string; success: boolean }> {
-  const dir  = await ensureTmpDir();
-  const id   = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const ext  = language === 'cpp' ? 'cpp' : 'c';
-  const src  = path.join(dir, `sol_${id}.${ext}`);
-  const exe  = path.join(dir, `sol_${id}.exe`);
+  const dir = await ensureTmpDir();
+  const id  = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const ext = language === 'cpp' ? 'cpp' : 'c';
+  const src = path.join(dir, `sol_${id}.${ext}`);
+  const exe = path.join(dir, `sol_${id}.exe`);
 
   try {
     await writeFile(src, code, 'utf8');
-
-    // Compile
     const compiler = language === 'cpp' ? 'g++' : 'gcc';
-    const compile  = await execAsync(
-      `${compiler} "${src}" -o "${exe}" -std=c++14 -O2`,
-      { timeout: 15_000 },
-    );
-
+    const compile  = await execAsync(`${compiler} "${src}" -o "${exe}" -std=c++14 -O2`, { timeout: 15_000 });
     if (compile.code !== 0 || compile.stderr) {
       return { output: '', error: compile.stderr || 'Compilation failed', success: false };
     }
-
-    // Execute
     const run = await execAsync(`"${exe}"`, { timeout: 10_000, input: stdin });
-
-    return {
-      output:  run.stdout.trim(),
-      error:   run.stderr.trim(),
-      success: run.code === 0,
-    };
+    return { output: run.stdout.trim(), error: run.stderr.trim(), success: run.code === 0 };
   } finally {
     unlink(src).catch(() => {});
     unlink(exe).catch(() => {});
   }
 }
 
-// ─── Run SQL via Python + sqlite3 (no external API) ──────────────────────────
-async function runSQL(
-  sqlCode: string,
-): Promise<{ output: string; error: string; success: boolean }> {
+async function runSQL(sqlCode: string): Promise<{ output: string; error: string; success: boolean }> {
   const dir    = await ensureTmpDir();
   const id     = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const pyFile = path.join(dir, `sql_${id}.py`);
-
   const escaped = sqlCode.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
-
   const script = `
 import sqlite3, sys
 conn = sqlite3.connect(':memory:')
@@ -113,51 +90,132 @@ except Exception as e:
     print(f"SQL Error: {e}", file=sys.stderr)
     sys.exit(1)
 `;
-
   try {
     await writeFile(pyFile, script, 'utf8');
-
-    // Try python, fallback to python3
     let result = await execAsync(`python "${pyFile}"`, { timeout: 10_000 });
     if (result.code !== 0 && result.stderr.toLowerCase().includes('not recognized')) {
       result = await execAsync(`python3 "${pyFile}"`, { timeout: 10_000 });
     }
-
-    return {
-      output:  result.stdout.trim(),
-      error:   result.stderr.trim(),
-      success: result.code === 0,
-    };
+    return { output: result.stdout.trim(), error: result.stderr.trim(), success: result.code === 0 };
   } finally {
     unlink(pyFile).catch(() => {});
   }
 }
 
 // ─── POST /api/coding/run ─────────────────────────────────────────────────────
+// Now runs against ALL visible test cases AND custom input, returns pass/fail per case
 export async function POST(request: NextRequest) {
   try {
     await requireAuth(['STUDENT', 'INTERVIEWER', 'ADMIN']);
 
-    const { code, language, stdin = '' } = await request.json();
+    const { code, language, stdin = '', questionId } = await request.json();
 
     if (!code || !language) {
       return NextResponse.json({ error: 'code and language are required' }, { status: 400 });
     }
 
-    let result: { output: string; error: string; success: boolean };
+    // ── If questionId provided, run against visible test cases ────────────────
+    if (questionId) {
+      const question = await (prisma as any).codingQuestion.findUnique({
+        where: { id: parseInt(questionId) },
+      });
 
+      if (!question) {
+        return NextResponse.json({ error: 'Question not found' }, { status: 404 });
+      }
+
+      // First compile once to check for errors
+      if (language === 'cpp' || language === 'c') {
+        const dir = path.join(os.tmpdir(), 'ipl_code');
+        if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+        const id  = `${Date.now()}_check`;
+        const ext = language === 'cpp' ? 'cpp' : 'c';
+        const src = path.join(dir, `sol_${id}.${ext}`);
+        const exe = path.join(dir, `sol_${id}.exe`);
+        try {
+          await writeFile(src, code, 'utf8');
+          const compiler = language === 'cpp' ? 'g++' : 'gcc';
+          const compile  = await execAsync(`${compiler} "${src}" -o "${exe}" -std=c++14 -O2`, { timeout: 15_000 });
+          if (compile.code !== 0 || compile.stderr) {
+            return NextResponse.json({
+              mode:         'testcases',
+              status:       'COMPILE_ERROR',
+              errorOutput:  compile.stderr || 'Compilation failed',
+              testsPassed:  0,
+              totalTests:   0,
+              results:      [],
+            });
+          }
+        } finally {
+          unlink(src).catch(() => {});
+          unlink(exe).catch(() => {});
+        }
+      }
+
+      // Run against each VISIBLE test case only (isHidden = false)
+      const testCases = (question.testCases as any[]).filter((tc: any) => !tc.isHidden);
+      const results: any[] = [];
+      let passed = 0;
+
+      for (let i = 0; i < testCases.length; i++) {
+        const tc = testCases[i];
+        try {
+          let result: { output: string; error: string; success: boolean };
+          if (language === 'sql') {
+            result = await runSQL(code);
+          } else {
+            result = await runCpp(code, language as 'c' | 'cpp', tc.input || '');
+          }
+
+          const actual   = (result.output || '').trim();
+          const expected = (tc.expectedOutput || '').trim();
+          const isPass   = actual === expected && result.success;
+          if (isPass) passed++;
+
+          results.push({
+            testCase:       i + 1,
+            input:          tc.input,
+            expectedOutput: tc.expectedOutput,
+            actualOutput:   actual,
+            passed:         isPass,
+            error:          result.error || null,
+            isHidden:       false,
+          });
+        } catch (err: any) {
+          results.push({
+            testCase:       i + 1,
+            input:          tc.input,
+            expectedOutput: tc.expectedOutput,
+            actualOutput:   '',
+            passed:         false,
+            error:          err.message,
+            isHidden:       false,
+          });
+        }
+      }
+
+      const allPass = passed === testCases.length;
+      return NextResponse.json({
+        mode:        'testcases',
+        status:      allPass ? 'ACCEPTED' : 'WRONG_ANSWER',
+        testsPassed: passed,
+        totalTests:  testCases.length,
+        results,
+      });
+    }
+
+    // ── Fallback: custom stdin only (no questionId) ───────────────────────────
+    let result: { output: string; error: string; success: boolean };
     if (language === 'cpp' || language === 'c') {
       result = await runCpp(code, language as 'c' | 'cpp', stdin);
     } else if (language === 'sql') {
       result = await runSQL(code);
     } else {
-      return NextResponse.json(
-        { error: `Language "${language}" not supported. Use cpp, c, or sql.` },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: `Language "${language}" not supported.` }, { status: 400 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({ mode: 'custom', ...result });
+
   } catch (error: any) {
     console.error('Run code error:', error);
     return NextResponse.json(
