@@ -177,7 +177,7 @@ function BookingForm({
   onSubmit,
 }: {
   selectedInterviewer: any;
-  formData: { topic: string; durationMinutes: string; scheduledTime: string };
+  formData: { topic: string; scheduledTime: string };
   setFormData: (data: any) => void;
   topicOption: string;
   setTopicOption: (v: string) => void;
@@ -225,16 +225,6 @@ function BookingForm({
           onCustomChange={handleCustomChange}
         />
 
-        <Select
-          label="Duration"
-          value={formData.durationMinutes}
-          onChange={(e) => setFormData({ ...formData, durationMinutes: e.target.value })}
-          options={[
-            { value: '30', label: '30 minutes' },
-            { value: '45', label: '45 minutes' },
-            { value: '60', label: '60 minutes' },
-          ]}
-        />
 
         {selectedInterviewer && selectedInterviewer.availabilitySlots?.length > 0 ? (
           <div>
@@ -271,7 +261,7 @@ function BookingForm({
 
         {error && (
           <p className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/20 rounded-lg px-3 py-2">
-            ❌ {error}
+            {error}
           </p>
         )}
 
@@ -419,7 +409,6 @@ export default function BookGuidancePage() {
   // All form state lifted to main component so it survives across renders
   const [formData, setFormData] = useState({
     topic: '',
-    durationMinutes: '30',
     scheduledTime: '',
   });
   const [topicOption, setTopicOption] = useState('');
@@ -464,7 +453,12 @@ export default function BookGuidancePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedInterviewer) { setError('Please select a mentor.'); return; }
-    if (!formData.topic.trim()) { setError('Please select or enter a topic.'); return; }
+
+    const selectedTopic = topicOption === 'Other' ? customTopic.trim() : topicOption;
+    if (!selectedTopic) { setError('Please select a topic or enter a custom topic.'); return; }
+    if (topicOption === 'Other' && !customTopic.trim()) { setError('Please describe your custom topic.'); return; }
+
+    if (!formData.scheduledTime) { setError('Please select a preferred date and time.'); return; }
     setError('');
     setSubmitting(true);
 
@@ -472,7 +466,11 @@ export default function BookGuidancePage() {
       const res = await fetch('/api/student/book/guidance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interviewerId: selectedInterviewer.id, ...formData }),
+        body: JSON.stringify({
+          interviewerId: selectedInterviewer.id,
+          topic: selectedTopic,
+          scheduledTime: formData.scheduledTime,
+        }),
       });
       const data = await res.json();
 

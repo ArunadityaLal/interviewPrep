@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
-    const countMap = new Map(submissionCounts.map((s: any) => [s.questionId, s._count.id]));
+    const countMap = new Map<number, number>(submissionCounts.map((s: any) => [s.questionId, s._count.id]));
 
     const enriched = questions.map((q: any) => ({
       id:           q.id,
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       category:     q.category,
       tags:         q.tags,
       solved:       solvedQuestionIds.has(q.id),
-      attempted:    (countMap.get(q.id) || 0) > 0,
+      attempted:    Number(countMap.get(q.id) || 0) > 0,
       submissions:  countMap.get(q.id) || 0,
     }));
 
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       where: { isActive: true },
       select: { category: true, difficulty: true },
     });
-    const categories = [...new Set(allQuestions.map((q: any) => q.category))].sort();
+    const categories = Array.from(new Set(allQuestions.map((q: any) => q.category))).sort();
 
     return NextResponse.json({ questions: enriched, categories });
   } catch (error: any) {

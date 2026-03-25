@@ -41,7 +41,7 @@ export function SessionCard({ session, viewType, showFeedbackButton = true }: Se
                   : 'bg-violet-100 text-violet-700'
               }`}
             >
-              {session.sessionType === 'GUIDANCE' ? '🎓 Guidance' : '💼 Interview'}
+              {session.sessionType === 'GUIDANCE' ? 'Guidance' : 'Interview'}
             </span>
             
             {/* Status Badge */}
@@ -52,12 +52,12 @@ export function SessionCard({ session, viewType, showFeedbackButton = true }: Se
             )}
             {isUpcoming && (
               <span className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700">
-                📅 Upcoming
+                Upcoming
               </span>
             )}
             {needsFeedback && viewType === 'interviewer' && (
               <span className="px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-700">
-                ⚠️ Needs Feedback
+                Needs Feedback
               </span>
             )}
             
@@ -90,7 +90,7 @@ export function SessionCard({ session, viewType, showFeedbackButton = true }: Se
 
           {/* Time */}
           <p className="text-sm text-slate-500">
-            📅 {formatDateTime(session.scheduledTime)}
+            {formatDateTime(session.scheduledTime)}
           </p>
         </div>
 

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Find the pending ManualBookingRequest with this order
     const pendingRequest = await prisma.manualBookingRequest.findFirst({
       where: { razorpayOrderId: razorpay_order_id },
-      include: { student: true },
+      include: { studentProfile: true },
     });
 
     if (!pendingRequest) {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Guard: make sure student owns this order
-    if (pendingRequest.student.userId !== userId) {
+    if (pendingRequest.studentProfile?.userId !== userId) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 403 });
     }
 

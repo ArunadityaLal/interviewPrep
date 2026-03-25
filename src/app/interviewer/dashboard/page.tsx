@@ -12,6 +12,42 @@ const INTERVIEW_TYPE_LABELS: Record<string, string> = {
   MIXED: "Mixed (Technical + HR)",
 };
 
+const EDUCATION_OPTIONS = [
+  { value: "BCA", label: "BCA" },
+  { value: "MCA", label: "MCA" },
+  { value: "B.Tech", label: "B.Tech" },
+  { value: "M.Tech", label: "M.Tech" },
+  { value: "B.Sc", label: "B.Sc" },
+  { value: "M.Sc", label: "M.Sc" },
+  { value: "MBA", label: "MBA" },
+  { value: "PhD", label: "PhD" },
+  { value: "Other", label: "Other" },
+];
+
+const COMPANY_OPTIONS = [
+  { value: "Google", label: "Google" },
+  { value: "Microsoft", label: "Microsoft" },
+  { value: "Amazon", label: "Amazon" },
+  { value: "Meta", label: "Meta" },
+  { value: "Apple", label: "Apple" },
+  { value: "Netflix", label: "Netflix" },
+  { value: "Stripe", label: "Stripe" },
+  { value: "Salesforce", label: "Salesforce" },
+  { value: "Other", label: "Other" },
+];
+
+const ROLE_OPTIONS = [
+  { value: "Software Engineer", label: "Software Engineer" },
+  { value: "Data Scientist", label: "Data Scientist" },
+  { value: "Backend Engineer", label: "Backend Engineer" },
+  { value: "Frontend Engineer", label: "Frontend Engineer" },
+  { value: "Full Stack Engineer", label: "Full Stack Engineer" },
+  { value: "DevOps Engineer", label: "DevOps Engineer" },
+  { value: "Product Manager", label: "Product Manager" },
+  { value: "Designer", label: "Designer" },
+  { value: "Other", label: "Other" },
+];
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
 function isGoogleDefaultPhoto(url: string | null | undefined): boolean {
   if (!url) return true;
@@ -399,10 +435,13 @@ export default function InterviewerDashboardPage() {
   const [formData, setFormData] = useState({
     name: "",
     education: "",
-    companies: "",
+    customEducation: "",
+    company: "",
+    customCompany: "",
     yearsOfExperience: "",
-    rolesSupported: "",
-    difficultyLevels: [] as string[],
+    rolesSupported: [] as string[],
+    customRole: "",
+    careerLevel: "",
     sessionTypesOffered: [] as string[],
     interviewTypesOffered: [] as string[],
     linkedinUrl: "",
@@ -428,14 +467,35 @@ export default function InterviewerDashboardPage() {
           setProfile(data.profile);
           setFormData({
             name: data.profile.name || "",
-            education: data.profile.education || "",
-            companies: data.profile.companies?.join(", ") || "",
+            company: data.profile.companies?.[0] || "",
+            customCompany: "",
             yearsOfExperience: data.profile.yearsOfExperience?.toString() || "",
-            rolesSupported: data.profile.rolesSupported?.join(", ") || "",
-            difficultyLevels: data.profile.difficultyLevels || [],
+            careerLevel: data.profile.careerLevel || "",
             sessionTypesOffered: data.profile.sessionTypesOffered || [],
             interviewTypesOffered: data.profile.interviewTypesOffered || [],
             linkedinUrl: data.profile.linkedinUrl || "",
+            education: EDUCATION_OPTIONS.some((o) => o.value === data.profile.education)
+              ? data.profile.education
+              : data.profile.education
+              ? "Other"
+              : "",
+            customEducation: EDUCATION_OPTIONS.some((o) => o.value === data.profile.education)
+              ? ""
+              : data.profile.education || "",
+            rolesSupported: [
+              ...(data.profile.rolesSupported || []).filter((r: string) =>
+                ROLE_OPTIONS.map((opt) => opt.value).includes(r),
+              ),
+              ...(data.profile.rolesSupported || []).some(
+                (r: string) => !ROLE_OPTIONS.map((opt) => opt.value).includes(r),
+              )
+                ? ["Other"]
+                : [],
+            ],
+            customRole:
+              (data.profile.rolesSupported || []).find(
+                (r: string) => !ROLE_OPTIONS.map((opt) => opt.value).includes(r),
+              ) || "",
           });
         } else {
           setEditing(true);
@@ -452,19 +512,32 @@ export default function InterviewerDashboardPage() {
     e.preventDefault();
     setSaving(true);
     try {
+      const resolvedEducation =
+        formData.education === "Other" ? formData.customEducation.trim() : formData.education;
+
+      const resolvedRoles = [
+        ...formData.rolesSupported.filter((role) => role !== "Other"),
+        ...(formData.rolesSupported.includes("Other") && formData.customRole.trim()
+          ? [formData.customRole.trim()]
+          : []),
+      ];
+
+      const resolvedCompanies = [
+        formData.company === "Other" && formData.customCompany
+          ? formData.customCompany.trim()
+          : formData.company,
+      ]
+        .map((c) => c.trim())
+        .filter(Boolean);
+
       const res = await fetch("/api/interviewer/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          companies: formData.companies
-            .split(",")
-            .map((c) => c.trim())
-            .filter(Boolean),
-          rolesSupported: formData.rolesSupported
-            .split(",")
-            .map((r) => r.trim())
-            .filter(Boolean),
+          education: resolvedEducation,
+          companies: resolvedCompanies,
+          rolesSupported: resolvedRoles,
         }),
       });
       const data = await res.json();
@@ -518,12 +591,10 @@ export default function InterviewerDashboardPage() {
     }
   };
 
-  const toggleDifficulty = (level: string) => {
+  const setCareerLevel = (level: string) => {
     setFormData((prev) => ({
       ...prev,
-      difficultyLevels: prev.difficultyLevels.includes(level)
-        ? prev.difficultyLevels.filter((l) => l !== level)
-        : [...prev.difficultyLevels, level],
+      careerLevel: level,
     }));
   };
 
@@ -574,7 +645,10 @@ export default function InterviewerDashboardPage() {
     );
   }
 
-  if (profile?.status === "PENDING") {
+  const isPendingReview =
+    profile?.status === "PENDING" && profile?.resumeUrl && profile?.idCardUrl;
+
+  if (isPendingReview) {
     return (
       <div className="max-w-2xl mx-auto">
         <ProfileHeader
@@ -684,21 +758,68 @@ export default function InterviewerDashboardPage() {
                 }
                 required
               />
-              <Input
-                label="Education"
-                value={formData.education}
-                onChange={(e) =>
-                  setFormData({ ...formData, education: e.target.value })
-                }
-              />
-              <Input
-                label="Companies (comma-separated)"
-                value={formData.companies}
-                onChange={(e) =>
-                  setFormData({ ...formData, companies: e.target.value })
-                }
-                placeholder="Google, Microsoft"
-              />
+              <div className="w-full">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Education
+                </label>
+                <select
+                  value={formData.education}
+                  onChange={(e) =>
+                    setFormData({ ...formData, education: e.target.value })
+                  }
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/80 text-slate-900 dark:text-slate-50 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all duration-200"
+                  required
+                >
+                  <option value="">Select your highest degree</option>
+                  {EDUCATION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                {formData.education === "Other" && (
+                  <Input
+                    label="Other Education"
+                    value={formData.customEducation}
+                    onChange={(e) =>
+                      setFormData({ ...formData, customEducation: e.target.value })
+                    }
+                    placeholder="Enter your degree"
+                    required
+                  />
+                )}
+              </div>
+              <div className="w-full">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Company
+                </label>
+                <select
+                  value={formData.company}
+                  onChange={(e) =>
+                    setFormData({ ...formData, company: e.target.value })
+                  }
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/80 text-slate-900 dark:text-slate-50 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all duration-200"
+                  required
+                >
+                  <option value="">Select a company</option>
+                  {COMPANY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {formData.company === "Other" && (
+                <Input
+                  label="Other Company"
+                  value={formData.customCompany}
+                  onChange={(e) =>
+                    setFormData({ ...formData, customCompany: e.target.value })
+                  }
+                  placeholder="Enter your company name"
+                  required
+                />
+              )}
               <Input
                 label="Years of Experience"
                 type="number"
@@ -711,34 +832,56 @@ export default function InterviewerDashboardPage() {
                 }
               />
             </div>
-            <Input
-              label="Roles Supported (comma-separated)"
-              value={formData.rolesSupported}
-              onChange={(e) =>
-                setFormData({ ...formData, rolesSupported: e.target.value })
-              }
-              placeholder="Software Engineer, Data Scientist"
-              required
-            />
+            <div className="w-full">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Roles Supported
+              </label>
+              <select
+                value={formData.rolesSupported[0] || ""}
+                onChange={(e) => {
+                  setFormData({ ...formData, rolesSupported: [e.target.value] });
+                }}
+                className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/80 text-slate-900 dark:text-slate-50 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all duration-200"
+                required
+              >
+                <option value="">Select a role</option>
+                {ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              {formData.rolesSupported[0] === "Other" && (
+                <Input
+                  label="Other Role"
+                  value={formData.customRole}
+                  onChange={(e) =>
+                    setFormData({ ...formData, customRole: e.target.value })
+                  }
+                  placeholder="Enter a custom role"
+                  required
+                />
+              )}
+            </div>
 
-            {/* Difficulty Levels */}
+            {/* Career Level */}
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Difficulty Levels
+                Career Level
               </label>
               <div className="flex flex-wrap gap-2 sm:gap-3">
-                {["EASY", "MEDIUM", "HARD"].map((level) => (
+                {["JUNIOR", "MID", "SENIOR", "STAFF_LEAD"].map((level) => (
                   <button
                     key={level}
                     type="button"
-                    onClick={() => toggleDifficulty(level)}
+                    onClick={() => setCareerLevel(level)}
                     className={`px-3 sm:px-4 py-2 rounded-lg border-2 font-medium text-sm transition-all ${
-                      formData.difficultyLevels.includes(level)
+                      formData.careerLevel === level
                         ? "bg-indigo-600 text-white border-indigo-600"
                         : "bg-white dark:bg-slate-900/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-400/20 hover:border-indigo-500"
                     }`}
                   >
-                    {level}
+                    {level.replace('_', ' ')}
                   </button>
                 ))}
               </div>
@@ -828,10 +971,10 @@ export default function InterviewerDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <div>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-1">
-                Companies
+                Company
               </p>
               <p className="font-medium text-slate-900 dark:text-white text-sm sm:text-base break-words">
-                {profile.companies?.join(", ") || "Not set"}
+                {profile.companies?.[0] || "Not set"}
               </p>
             </div>
             <div>
@@ -854,10 +997,10 @@ export default function InterviewerDashboardPage() {
             </div>
             <div>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mb-1">
-                Difficulty
+                Career Level
               </p>
               <p className="font-medium text-slate-900 dark:text-white text-sm sm:text-base">
-                {profile.difficultyLevels?.join(", ") || "Not set"}
+                {profile.careerLevel || "Not set"}
               </p>
             </div>
             <div>

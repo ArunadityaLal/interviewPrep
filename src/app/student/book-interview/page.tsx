@@ -10,6 +10,58 @@ import { PaymentGate, UsageBanner } from '@/components/shared/PaymentGate';
 
 declare global { interface Window { Razorpay: any; } }
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+const TARGET_ROLES = [
+  'Software Engineer',
+  'Frontend',
+  'Backend',
+  'Full Stack',
+  'Data Scientist',
+  'Product Manager',
+  'DevOps',
+  'QA/Test Engineer',
+  'Other',
+];
+
+const INTERVIEW_DIFFICULTIES = [
+  { value: 'INTERN', label: 'Intern' },
+  { value: 'ENTRY', label: 'Entry' },
+  { value: 'MID', label: 'Mid' },
+  { value: 'SENIOR', label: 'Senior' },
+];
+
+const LEVEL_RANK: Record<string, number> = {
+  INTERN: 1,
+  ENTRY: 2,
+  MID: 3,
+  SENIOR: 4,
+};
+
+function detectStudentLevel(profile: any): 'INTERN' | 'ENTRY' | 'MID' | 'SENIOR' {
+  if (!profile) return 'ENTRY';
+
+  const text = (profile.experienceLevel || '').toString().toLowerCase();
+  const years = Number(profile.yearsOfExperience ?? 0);
+
+  if (text.includes('intern') || text.includes('3rd') || text.includes('third')) {
+    return 'INTERN';
+  }
+  if (text.includes('fresher') || text.includes('entry') || text.includes('graduate')) {
+    return 'ENTRY';
+  }
+  if (text.includes('mid')) {
+    return 'MID';
+  }
+  if (text.includes('senior') || text.includes('lead')) {
+    return 'SENIOR';
+  }
+
+  if (years < 1) return 'ENTRY';
+  if (years < 2) return 'ENTRY';
+  if (years < 5) return 'MID';
+  return 'SENIOR';
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Interviewer {
   id: number;
@@ -17,7 +69,7 @@ interface Interviewer {
   companies: string[];
   rolesSupported: string[];
   yearsOfExperience: number | null;
-  difficultyLevels: string[];
+  careerLevel: string | null;
   sessionTypesOffered: string[];
   interviewTypesOffered: string[];
   linkedinUrl: string | null;
@@ -29,7 +81,6 @@ interface BookingForm {
   role: string;
   difficulty: string;
   interviewType: string;
-  durationMinutes: string;
   scheduledTime: string;
 }
 
@@ -194,9 +245,10 @@ function InterviewerPickerModal({
     role: '',
     difficulty: '',
     interviewType: '',
-    durationMinutes: '60',
     scheduledTime: '',
   });
+  const [roleOption, setRoleOption] = useState('');
+  const [customRole, setCustomRole] = useState('');
   const [formError, setFormError] = useState('');
 
   const filtered = interviewers.filter((iv) => {
@@ -219,12 +271,25 @@ function InterviewerPickerModal({
 
   const handleSubmit = () => {
     setFormError('');
+    const selectedRole = roleOption === 'Other' ? customRole.trim() : roleOption;
+    if (!selectedRole) {
+      setFormError('Please select a target role or enter a custom role.');
+      return;
+    }
+    if (roleOption === 'Other' && !customRole.trim()) {
+      setFormError('Please enter a custom role.');
+      return;
+    }
     if (!form.difficulty)    { setFormError('Please select a difficulty level.'); return; }
     if (!form.interviewType) { setFormError('Please select an interview type.');   return; }
     if (!form.scheduledTime) { setFormError('Please select a preferred date & time.'); return; }
     const chosenTime = new Date(form.scheduledTime);
     if (chosenTime <= new Date()) { setFormError('Please select a future date and time.'); return; }
-    onBook(selected, form);
+
+    onBook(selected, {
+      ...form,
+      role: selectedRole,
+    });
   };
 
   return (
@@ -244,7 +309,7 @@ function InterviewerPickerModal({
               )}
               <div>
                 <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                  {step === 1 ? '🎯 Pick Your Interviewer' : '📋 Booking Details'}
+                  {step === 1 ? 'Pick Your Interviewer' : 'Booking Details'}
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {step === 1
@@ -283,7 +348,7 @@ function InterviewerPickerModal({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{iv.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">🏢 {iv.companies.slice(0, 2).join(' · ')}{iv.yearsOfExperience ? ` · ${iv.yearsOfExperience}y exp` : ''}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{iv.companies.slice(0, 2).join(' · ')}{iv.yearsOfExperience ? ` · ${iv.yearsOfExperience}y exp` : ''}</p>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {iv.rolesSupported.slice(0, 3).map((r) => (
                             <span key={r} className="text-[10px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 rounded-full">{r}</span>
@@ -329,9 +394,39 @@ function InterviewerPickerModal({
                 {/* Target Role */}
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Target Role</label>
-                  <input type="text" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}
-                    placeholder="e.g., Software Engineer, Product Manager"
-                    className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80" />
+                  <select
+                    value={roleOption}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setRoleOption(val);
+                      if (val === 'Other') {
+                        setCustomRole('');
+                        setForm((prev) => ({ ...prev, role: '' }));
+                      } else {
+                        setCustomRole('');
+                        setForm((prev) => ({ ...prev, role: val }));
+                      }
+                    }}
+                    className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80"
+                  >
+                    <option value="">Select a role</option>
+                    {TARGET_ROLES.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                  {roleOption === 'Other' && (
+                    <input
+                      type="text"
+                      value={customRole}
+                      onChange={(e) => {
+                        setCustomRole(e.target.value);
+                        setForm((prev) => ({ ...prev, role: e.target.value }));
+                      }}
+                      autoFocus
+                      placeholder="Please describe your target role…"
+                      className="mt-2 w-full border border-indigo-300 dark:border-indigo-400/30 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80"
+                    />
+                  )}
                 </div>
 
                 {/* Difficulty + Interview Type */}
@@ -341,9 +436,10 @@ function InterviewerPickerModal({
                     <select value={form.difficulty} onChange={(e) => setForm({ ...form, difficulty: e.target.value })}
                       className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80">
                       <option value="">Select…</option>
-                      <option value="EASY">Easy</option>
-                      <option value="MEDIUM">Medium</option>
-                      <option value="HARD">Hard</option>
+                      <option value="INTERN">Intern</option>
+                      <option value="ENTRY">Entry</option>
+                      <option value="MID">Mid</option>
+                      <option value="SENIOR">Senior</option>
                     </select>
                   </div>
                   <div>
@@ -358,23 +454,15 @@ function InterviewerPickerModal({
                   </div>
                 </div>
 
-                {/* Duration + Date/Time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Duration</label>
-                    <select value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-                      className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80">
-                      <option value="45">45 minutes</option>
-                      <option value="60">60 minutes</option>
-                      <option value="90">90 minutes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Preferred Date & Time</label>
-                    <input type="datetime-local" value={form.scheduledTime} min={minDateTime}
-                      onChange={(e) => setForm({ ...form, scheduledTime: e.target.value })}
-                      className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80" />
-                  </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Preferred Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={form.scheduledTime}
+                    min={minDateTime}
+                    onChange={(e) => setForm({ ...form, scheduledTime: e.target.value })}
+                    className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80"
+                  />
                 </div>
               </div>
 
@@ -392,7 +480,7 @@ function InterviewerPickerModal({
                     </svg>
                     Submitting…
                   </span>
-                ) : '🎯 Submit Request to Admin'}
+                ) : 'Submit Request to Admin'}
               </button>
             </>
           )}
@@ -410,7 +498,6 @@ export default function BookInterviewPage() {
     role: '',
     difficulty: '',
     interviewType: '',
-    durationMinutes: '60',
     scheduledTime: '',
   });
 
@@ -426,6 +513,11 @@ export default function BookInterviewPage() {
     preferredInterviewerUnlocked: boolean;
   } | null>(null);
   const [limitReached, setLimitReached] = useState(false);
+
+  const [roleOption, setRoleOption] = useState('');
+  const [customRole, setCustomRole] = useState('');
+  const [studentLevel, setStudentLevel] = useState<'INTERN' | 'ENTRY' | 'MID' | 'SENIOR' | null>(null);
+  const [levelWarning, setLevelWarning] = useState('');
 
   const [interviewers, setInterviewers] = useState<Interviewer[]>([]);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -448,6 +540,7 @@ export default function BookInterviewPage() {
             preferredInterviewerUnlocked: data.profile.preferredInterviewerUnlocked ?? false,
           });
           setLimitReached(data.profile.interviewsUsed >= data.profile.interviewsLimit);
+          setStudentLevel(detectStudentLevel(data.profile));
         }
       }
     } catch (e) { console.error('Failed to load plan:', e); }
@@ -470,18 +563,34 @@ export default function BookInterviewPage() {
   const handleAutoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    const selectedRole = roleOption === 'Other' ? customRole.trim() : roleOption;
+    if (!selectedRole) { setError('Please select a target role or specify one.'); return; }
+    if (roleOption === 'Other' && !customRole.trim()) { setError('Please enter a custom role for Other.'); return; }
     if (!formData.difficulty)    { setError('Please select a difficulty level.'); return; }
     if (!formData.interviewType) { setError('Please select an interview type.');   return; }
     if (!formData.scheduledTime) { setError('Please select a preferred date and time.'); return; }
+
     const chosenTime = new Date(formData.scheduledTime);
     if (chosenTime <= new Date()) { setError('Please select a future date and time.'); return; }
+
+    if (studentLevel && formData.difficulty && LEVEL_RANK[formData.difficulty] > LEVEL_RANK[studentLevel]) {
+      setLevelWarning('Selected level is higher than your detected experience level. We recommend adjusting for best match.');
+    } else {
+      setLevelWarning('');
+    }
 
     setSubmitting(true);
     try {
       const res = await fetch('/api/student/book/interview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, scheduledTime: chosenTime.toISOString() }),
+        body: JSON.stringify({
+          role: selectedRole,
+          difficulty: formData.difficulty,
+          interviewType: formData.interviewType,
+          scheduledTime: chosenTime.toISOString(),
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -591,7 +700,6 @@ export default function BookInterviewPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-400/20 bg-indigo-50 dark:bg-indigo-500/10 p-4">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xl">⚡</span>
               <span className="font-bold text-indigo-800 dark:text-indigo-200 text-sm">Auto-Assign</span>
               <span className="ml-auto text-xs px-2 py-0.5 bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 rounded-full font-semibold">FREE</span>
             </div>
@@ -600,7 +708,6 @@ export default function BookInterviewPage() {
 
           <button onClick={handlePreferredClick} className="rounded-2xl border-2 border-violet-200 dark:border-violet-400/20 bg-violet-50 dark:bg-violet-500/10 p-4 text-left hover:border-violet-400 hover:bg-violet-100 dark:hover:bg-violet-500/15 transition-all">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xl">🎯</span>
               <span className="font-bold text-violet-800 dark:text-violet-200 text-sm">Choose Interviewer</span>
               {plan?.preferredInterviewerUnlocked ? (
                 <span className="ml-auto text-xs px-2 py-0.5 bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300 rounded-full font-semibold">✓ Unlocked</span>
@@ -617,19 +724,61 @@ export default function BookInterviewPage() {
         {/* ── Auto-assign form ── */}
         <Card variant="elevated" className="theme-surface-card p-4 sm:p-6 lg:p-8">
           <form onSubmit={handleAutoSubmit} className="space-y-4 sm:space-y-6">
-            <Input label="Target Role" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} placeholder="e.g., Software Engineer, Product Manager" required />
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Target Role</label>
+              <select
+                value={roleOption}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRoleOption(val);
+                  if (val !== 'Other') {
+                    setCustomRole('');
+                    setFormData((prev) => ({ ...prev, role: val }));
+                  } else {
+                    setFormData((prev) => ({ ...prev, role: '' }));
+                  }
+                }}
+                className="w-full border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80"
+                required
+              >
+                <option value="">Select a role</option>
+                {TARGET_ROLES.map((role) => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+
+              {roleOption === 'Other' && (
+                <input
+                  type="text"
+                  placeholder="Please describe your target role…"
+                  value={customRole}
+                  autoFocus
+                  onChange={(e) => {
+                    setCustomRole(e.target.value);
+                    setFormData((prev) => ({ ...prev, role: e.target.value }));
+                  }}
+                  className="mt-2 w-full border border-indigo-300 dark:border-indigo-400/30 rounded-xl px-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white dark:bg-slate-900/80"
+                  required
+                />
+              )}
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <Select label="Difficulty Level" value={formData.difficulty} onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                options={[{ value: 'EASY', label: 'Easy' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'HARD', label: 'Hard' }]} />
+                options={INTERVIEW_DIFFICULTIES} />
               <Select label="Interview Type" value={formData.interviewType} onChange={(e) => setFormData({ ...formData, interviewType: e.target.value })}
                 options={[{ value: 'TECHNICAL', label: 'Technical' }, { value: 'HR', label: 'HR / Behavioral' }, { value: 'MIXED', label: 'Mixed (Technical + HR)' }]} />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              <Select label="Duration" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: e.target.value })}
-                options={[{ value: '45', label: '45 minutes' }, { value: '60', label: '60 minutes' }, { value: '90', label: '90 minutes' }]} />
-              <Input label="Preferred Date & Time" type="datetime-local" value={formData.scheduledTime} min={minDateTime} onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })} required />
+            <div>
+              <Input
+                label="Preferred Date & Time"
+                type="datetime-local"
+                value={formData.scheduledTime}
+                min={minDateTime}
+                onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
+                required
+              />
             </div>
 
             <div className="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-400/20 rounded-xl p-3 sm:p-4">
@@ -638,6 +787,7 @@ export default function BookInterviewPage() {
               </p>
             </div>
 
+            {levelWarning && <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/20 rounded-xl p-3 sm:p-4"><p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200">{levelWarning}</p></div>}
             {error && <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-400/20 rounded-xl p-3 sm:p-4"><p className="text-xs sm:text-sm text-red-800 dark:text-red-200">{error}</p></div>}
 
             <Button type="submit" className="w-full" size="lg" disabled={submitting}>
@@ -646,7 +796,7 @@ export default function BookInterviewPage() {
                   <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
                   Finding best interviewer…
                 </span>
-              ) : '⚡ Book Interview (Auto-Assign)'}
+              ) : 'Book Interview (Auto-Assign)'}
             </Button>
           </form>
         </Card>

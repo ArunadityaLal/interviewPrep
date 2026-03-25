@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, authErrorStatus } from '@/lib/auth';
-import { DifficultyLevel, InterviewType } from '@prisma/client';
+import { InterviewType } from '@prisma/client';
 import { sendBookingConfirmationToStudent, sendBookingNotificationToInterviewer } from '@/lib/email';
 
 const MIN_REMAINDER_MINUTES = 30;
+
+type CareerLevelValue = 'JUNIOR' | 'MID' | 'SENIOR' | 'STAFF_LEAD';
+type InterviewDifficultyValue = 'INTERN' | 'ENTRY' | 'MID' | 'SENIOR';
+
+const ELIGIBLE_CAREER_LEVELS: Record<InterviewDifficultyValue, CareerLevelValue[]> = {
+  INTERN: ['JUNIOR', 'MID', 'SENIOR', 'STAFF_LEAD'],
+  ENTRY:  ['JUNIOR', 'MID', 'SENIOR', 'STAFF_LEAD'],
+  MID:    ['MID', 'SENIOR', 'STAFF_LEAD'],
+  SENIOR: ['SENIOR', 'STAFF_LEAD'],
+};
 
 // ─── Interviewer Scoring Algorithm ───────────────────────────────────────────
 //
@@ -44,14 +54,7 @@ interface ScoredInterviewer {
 }
 
 function scoreInterviewer(
-  interviewer: {
-    id: number;
-    name: string;
-    rolesSupported: string[];
-    yearsOfExperience: number | null;
-    availabilitySlots: { id: number; startTime: Date; endTime: Date }[];
-    _count: { sessions: number };
-  },
+  interviewer: any,
   role: string,
   sessionDurationMins: number,
 ): ScoredInterviewer | null {
@@ -61,15 +64,15 @@ function scoreInterviewer(
 
   // ── Role match (40 pts) ──────────────────────────────────────────────────
   const fullMatch = interviewer.rolesSupported.some(
-    r => r.toLowerCase().includes(roleNorm) || roleNorm.includes(r.toLowerCase()),
+    (r: string) => r.toLowerCase().includes(roleNorm) || roleNorm.includes(r.toLowerCase()),
   );
-  const partialMatch = !fullMatch && roleNorm.split(/\s+/).some(word =>
-    interviewer.rolesSupported.some(r => r.toLowerCase().includes(word)),
+  const partialMatch = !fullMatch && roleNorm.split(/\s+/).some((word: string) =>
+    interviewer.rolesSupported.some((r: string) => r.toLowerCase().includes(word)),
   );
   const roleScore = fullMatch ? 40 : partialMatch ? 20 : 0;
 
   // ── Workload (30 pts) ────────────────────────────────────────────────────
-  const upcoming      = interviewer._count.sessions;
+  const upcoming      = interviewer._count?.sessions ?? 0;
   const workloadScore = Math.max(0, 30 - upcoming * 5);
 
   // ── Slot efficiency (20 pts) — pick best-fitting slot ───────────────────
@@ -103,15 +106,16 @@ export async function POST(request: NextRequest) {
     const { userId } = await requireAuth(['STUDENT']);
     const body = await request.json();
 
-    const { role, difficulty, interviewType, durationMinutes, scheduledTime } = body;
+    const { role, difficulty, interviewType, scheduledTime } = body;
 
-    if (!role || !difficulty || !interviewType || !durationMinutes || !scheduledTime) {
+    if (!role || !difficulty || !interviewType || !scheduledTime) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
 
-    const duration     = parseInt(durationMinutes);
+    const duration = 60; // Default fixed session length
     const sessionStart = new Date(scheduledTime);
     const sessionEnd   = new Date(sessionStart.getTime() + duration * 60_000);
+
 
     if (sessionStart <= new Date()) {
       return NextResponse.json({ error: 'Scheduled time must be in the future' }, { status: 400 });
@@ -132,7 +136,7 @@ export async function POST(request: NextRequest) {
       prisma.interviewerProfile.findMany({
         where: {
           status:                'APPROVED',
-          difficultyLevels:      { has: difficulty as DifficultyLevel },
+          careerLevel:           { in: ELIGIBLE_CAREER_LEVELS[difficulty as InterviewDifficultyValue] ?? [] },
           sessionTypesOffered:   { has: 'INTERVIEW' },
           interviewTypesOffered: { has: interviewType as InterviewType },
           availabilitySlots: {
@@ -142,7 +146,7 @@ export async function POST(request: NextRequest) {
               endTime:   { gte: sessionEnd   },
             },
           },
-        },
+        } as any,
         select: {
           id:                    true,
           name:                  true,
@@ -240,7 +244,7 @@ export async function POST(request: NextRequest) {
 
     const winner   = scored[0];
     // Find full candidate record for email data (includes user.email, companies, etc.)
-    const winnerFull = candidates.find(c => c.id === winner.id)!;
+    const winnerFull = candidates.find((c: any) => c.id === winner.id)! as any;
     const slot     = winner.bestSlot;
 
     // ── Slot splitting ────────────────────────────────────────────────────────
@@ -261,7 +265,7 @@ export async function POST(request: NextRequest) {
           interviewerId:   winner.id,
           sessionType:     'INTERVIEW',
           role,
-          difficulty:      difficulty as DifficultyLevel,
+          difficulty:      difficulty as any,
           interviewType:   interviewType as InterviewType,
           durationMinutes: duration,
           scheduledTime:   sessionStart,
