@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Card } from "@/components/ui/Card";
 import { PaymentGate } from "@/components/shared/PaymentGate";
 import Link from "next/link";
@@ -72,6 +73,32 @@ const hiringLabel: Record<string, { text: string; color: string }> = {
     color: "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300",
   },
 };
+
+const targetRoleOptions = [
+  { value: "", label: "Select your target role" },
+  { value: "Software Engineer", label: "Software Engineer" },
+  { value: "Frontend Engineer", label: "Frontend Engineer" },
+  { value: "Backend Engineer", label: "Backend Engineer" },
+  { value: "Full Stack Engineer", label: "Full Stack Engineer" },
+  { value: "Data Scientist", label: "Data Scientist" },
+  { value: "DevOps Engineer", label: "DevOps Engineer" },
+  { value: "Product Manager", label: "Product Manager" },
+  { value: "SRE", label: "SRE" },
+  { value: "Mobile Engineer", label: "Mobile Engineer" },
+  { value: "AI/ML Engineer", label: "AI/ML Engineer" },
+  { value: "Other", label: "Other" },
+];
+
+const experienceLevelOptions = [
+  { value: "", label: "Select experience level" },
+  { value: "Internship", label: "Internship" },
+  { value: "Entry Level", label: "Entry Level" },
+  { value: "1-2 years", label: "1-2 years" },
+  { value: "3-5 years", label: "3-5 years" },
+  { value: "5+ years", label: "5+ years" },
+  { value: "Senior", label: "Senior" },
+  { value: "Lead", label: "Lead" },
+];
 
 function RatingBar({ label, value }: { label: string; value: number }) {
   return (
@@ -531,6 +558,7 @@ function DashboardInner() {
     branch: "",
     graduationYear: "",
     targetRole: "",
+    targetRoleCustom: "",
     experienceLevel: "",
   });
 
@@ -552,12 +580,20 @@ function DashboardInner() {
         setUser(data.user);
         setProfile(data.profile);
         if (data.profile) {
+          const knownRole = targetRoleOptions.some(
+            (opt) => opt.value === data.profile.targetRole && opt.value !== ""
+          );
           setFormData({
             name: data.profile.name || "",
             college: data.profile.college || "",
             branch: data.profile.branch || "",
             graduationYear: data.profile.graduationYear?.toString() || "",
-            targetRole: data.profile.targetRole || "",
+            targetRole: knownRole
+              ? data.profile.targetRole || ""
+              : data.profile.targetRole
+              ? "Other"
+              : "",
+            targetRoleCustom: knownRole ? "" : data.profile.targetRole || "",
             experienceLevel: data.profile.experienceLevel || "",
           });
         } else {
@@ -578,10 +614,18 @@ function DashboardInner() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        targetRole:
+          formData.targetRole === "Other"
+            ? formData.targetRoleCustom.trim() || ""
+            : formData.targetRole,
+      };
+
       const res = await fetch("/api/student/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         await fetchData();
@@ -755,21 +799,46 @@ function DashboardInner() {
                 }
                 type="number"
               />
-              <Input
+              <Select
                 label="Target Role"
                 value={formData.targetRole}
-                onChange={(e) =>
-                  setFormData({ ...formData, targetRole: e.target.value })
-                }
-                placeholder="e.g., Software Engineer"
+                onChange={(e) => {
+                  const selected = e.target.value;
+                  if (selected === "Other") {
+                    setFormData({
+                      ...formData,
+                      targetRole: "Other",
+                      targetRoleCustom: "",
+                    });
+                  } else {
+                    setFormData({
+                      ...formData,
+                      targetRole: selected,
+                      targetRoleCustom: "",
+                    });
+                  }
+                }}
+                options={targetRoleOptions}
+                required
               />
-              <Input
+              {formData.targetRole === "Other" && (
+                <Input
+                  label="Specify target role"
+                  value={formData.targetRoleCustom}
+                  onChange={(e) =>
+                    setFormData({ ...formData, targetRoleCustom: e.target.value })
+                  }
+                  required
+                />
+              )}
+              <Select
                 label="Experience Level"
                 value={formData.experienceLevel}
                 onChange={(e) =>
                   setFormData({ ...formData, experienceLevel: e.target.value })
                 }
-                placeholder="e.g., Entry Level, 2 years"
+                options={experienceLevelOptions}
+                required
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
