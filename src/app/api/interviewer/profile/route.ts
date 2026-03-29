@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, authErrorStatus } from '@/lib/auth';
-import { DifficultyLevel, SessionType, InterviewType } from '@prisma/client';
+import { CareerLevel, SessionType, InterviewType } from '@prisma/client';
 
 // ─── LinkedIn og:image scraper ────────────────────────────────────────────────
 async function fetchLinkedInPhoto(linkedinUrl: string): Promise<string | null> {
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       companies,
       yearsOfExperience,
       rolesSupported,
-      difficultyLevels,
+      careerLevel,
       sessionTypesOffered,
       interviewTypesOffered,
       linkedinUrl,
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     if (!companies?.length)                  missing.push('Companies');
     if (yearsOfExperience == null || yearsOfExperience === '') missing.push('Years of Experience');
     if (!rolesSupported?.length)             missing.push('Roles Supported');
-    if (!difficultyLevels?.length)           missing.push('Difficulty Levels');
+    if (!careerLevel?.trim())                missing.push('Career Level');
     if (!sessionTypesOffered?.length)        missing.push('Session Types');
     if (sessionTypesOffered?.includes('INTERVIEW') && !interviewTypesOffered?.length)
       missing.push('Interview Types');
@@ -119,15 +119,15 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Validate enum values ──────────────────────────────────────────────────
-    const validDifficulty     = difficultyLevels.every((l: string) => ['EASY', 'MEDIUM', 'HARD'].includes(l));
+    const validCareerLevel   = ['JUNIOR', 'MID', 'SENIOR', 'STAFF_LEAD'].includes(careerLevel);
     const validSessionTypes   = sessionTypesOffered.every((t: string) => ['GUIDANCE', 'INTERVIEW'].includes(t));
     const validInterviewTypes = (interviewTypesOffered || []).every((t: string) =>
       ['TECHNICAL', 'HR', 'MIXED'].includes(t),
     );
 
-    if (!validDifficulty || !validSessionTypes || !validInterviewTypes) {
+    if (!validCareerLevel || !validSessionTypes || !validInterviewTypes) {
       return NextResponse.json(
-        { error: 'Invalid difficulty levels, session types, or interview types' },
+        { error: 'Invalid career level, session types, or interview types' },
         { status: 400 },
       );
     }
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
       companies:             companies || [],
       yearsOfExperience:     yearsOfExperience != null ? parseInt(yearsOfExperience) : null,
       rolesSupported,
-      difficultyLevels:      difficultyLevels    as DifficultyLevel[],
+      careerLevel:          careerLevel as CareerLevel,
       sessionTypesOffered:   sessionTypesOffered as SessionType[],
       interviewTypesOffered: sessionTypesOffered.includes('INTERVIEW')
         ? (interviewTypesOffered as InterviewType[])

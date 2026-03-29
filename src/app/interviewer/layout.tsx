@@ -128,7 +128,7 @@ function SettingsModal({
           companies:      profileForm.companies.split(',').map(c => c.trim()).filter(Boolean),
           rolesSupported: profileForm.rolesSupported.split(',').map(r => r.trim()).filter(Boolean),
           // Keep existing array fields unchanged (managed on dashboard page)
-          difficultyLevels:      profile?.difficultyLevels      || [],
+          careerLevel:           profile?.careerLevel           || null,
           sessionTypesOffered:   profile?.sessionTypesOffered   || [],
           interviewTypesOffered: profile?.interviewTypesOffered || [],
         }),
@@ -162,7 +162,7 @@ function SettingsModal({
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-gray-800 shrink-0">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">⚙️ Settings</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Settings</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors font-bold"
@@ -596,11 +596,19 @@ export default function InterviewerLayout({ children }: { children: React.ReactN
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold ${
                 profile.status === 'APPROVED'
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                  : profile.status === 'PENDING'
+                  : profile.status === 'PENDING' && profile.resumeUrl && profile.idCardUrl
                   ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                  : profile.status === 'PENDING'
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                   : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
               }`}>
-                {profile.status === 'APPROVED' ? '✅ Approved' : profile.status === 'PENDING' ? '⏳ Pending Review' : '❌ Rejected'}
+                {profile.status === 'APPROVED'
+                  ? '✅ Approved'
+                  : profile.status === 'PENDING' && profile.resumeUrl && profile.idCardUrl
+                  ? '⏳ Pending Review'
+                  : profile.status === 'PENDING'
+                  ? '📝 Documents required'
+                  : '❌ Rejected'}
               </span>
             </div>
           )}

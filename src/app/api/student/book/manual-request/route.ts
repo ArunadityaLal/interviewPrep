@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, authErrorStatus } from '@/lib/auth';
-import { DifficultyLevel, InterviewType, SessionType } from '@prisma/client';
+import { InterviewDifficulty, InterviewType, SessionType } from '@prisma/client';
 import { sendManualBookingReceivedToStudent } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
@@ -67,15 +67,15 @@ export async function POST(request: NextRequest) {
         preferredInterviewerId: preferredInterviewerId ? parseInt(preferredInterviewerId) : null,
         topic:                  topic || null,
         role:                   role || null,
-        difficulty:             difficulty as DifficultyLevel | null,
-        interviewType:          interviewType as InterviewType | null,
-        sessionType:            sessionType as SessionType,
+        difficulty:             difficulty as any,
+        interviewType:          interviewType as any,
+        sessionType:            sessionType as any,
         status:                 'PENDING',
         paymentStatus:          'PAID', // unlock already paid
       },
       include: {
-        student:              { include: { user: { select: { email: true, name: true } } } },
-        preferredInterviewer: { include: { user: { select: { name: true } } } },
+        studentProfile:        { include: { user: { select: { email: true, name: true } } } },
+        interviewerProfile:    { include: { user: { select: { name: true } } } },
       },
     });
 
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         studentName:              student.user.name || student.name,
         studentEmail:             student.user.email,
         sessionType:              sessionType as SessionType,
-        preferredInterviewerName: newRequest.preferredInterviewer?.user.name || undefined,
+        preferredInterviewerName: newRequest.interviewerProfile?.user.name || undefined,
         requestId:                newRequest.id,
       });
     } catch (e) {
@@ -119,7 +119,7 @@ export async function GET() {
     const requests = await prisma.manualBookingRequest.findMany({
       where: { studentId: student.id },
       include: {
-        preferredInterviewer: {
+        interviewerProfile: {
           include: { user: { select: { name: true, profilePicture: true } } },
         },
         session: true,

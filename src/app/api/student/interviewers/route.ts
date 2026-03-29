@@ -17,7 +17,7 @@ export async function GET() {
         companies: true,
         rolesSupported: true,
         yearsOfExperience: true,
-        difficultyLevels: true,
+        careerLevel: true,
         sessionTypesOffered: true,
         interviewTypesOffered: true,
         linkedinUrl: true,

@@ -44,7 +44,7 @@ export interface InterviewerProfileData {
   companies: string[];
   yearsOfExperience?: number;
   rolesSupported: string[];
-  difficultyLevels: DifficultyLevel[];
+  careerLevel: 'JUNIOR' | 'MID' | 'SENIOR' | 'STAFF_LEAD';
   sessionTypesOffered: SessionType[];
   linkedinUrl?: string;
 }
@@ -52,15 +52,13 @@ export interface InterviewerProfileData {
 export interface BookGuidanceRequest {
   interviewerId: number;
   topic: string;
-  durationMinutes: number;
   scheduledTime: string;
 }
 
 export interface BookInterviewRequest {
   role: string;
-  difficulty: DifficultyLevel;
+  difficulty: 'INTERN' | 'ENTRY' | 'MID' | 'SENIOR';
   interviewType: InterviewType;
-  durationMinutes: number;
   scheduledTime: string;
 }
 

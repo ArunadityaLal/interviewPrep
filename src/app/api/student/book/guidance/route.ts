@@ -14,13 +14,13 @@ export async function POST(request: NextRequest) {
     const { userId } = await requireAuth(['STUDENT']);
     const body = await request.json();
 
-    const { interviewerId, topic, durationMinutes, scheduledTime } = body;
+    const { interviewerId, topic, scheduledTime } = body;
 
-    if (!interviewerId || !topic || !durationMinutes || !scheduledTime) {
+    if (!interviewerId || !topic || !scheduledTime) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
 
-    const duration     = parseInt(durationMinutes); // 30 | 45 | 60
+    const duration     = 60; // fixed duration
     const sessionStart = new Date(scheduledTime);
     const sessionEnd   = new Date(sessionStart.getTime() + duration * 60_000);
 

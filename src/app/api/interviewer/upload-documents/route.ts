@@ -163,6 +163,14 @@ export async function POST(request: NextRequest) {
       updateData.idCardUrl = await uploadToCloudinary(buffer, filename, 'interviewer-docs', resType);
     }
 
+    // ── Set pending status only when both documents are present ─────────────
+    const finalResumeUrl = updateData.resumeUrl || existing?.resumeUrl;
+    const finalIdCardUrl = updateData.idCardUrl || existing?.idCardUrl;
+
+    if (finalResumeUrl && finalIdCardUrl) {
+      updateData.status = 'PENDING';
+    }
+
     // ── Update interviewer profile ────────────────────────────────────────
     const profile = await prisma.interviewerProfile.update({
       where: { userId },
