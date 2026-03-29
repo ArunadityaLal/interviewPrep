@@ -1135,19 +1135,7 @@ function DashboardInner() {
               )}
             </div>
           </Link>
-
-          <Link href="/student/coding">
-            <div className="p-4 sm:p-6 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-emerald-500/10 dark:to-teal-500/10 border-2 border-green-200 dark:border-emerald-400/20 rounded-xl hover:shadow-lg transition-all cursor-pointer group">
-              <div className="text-2xl sm:text-3xl mb-2 sm:mb-3">💻</div>
-              <h3 className="font-semibold text-slate-900 dark:text-white mb-1 text-sm sm:text-base">
-                Coding Practice
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-                Solve C, C++ and SQL challenges
-              </p>
-            </div>
-          </Link>
-
+          
           <div
             className="p-4 sm:p-6 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-white/5 dark:to-white/[0.03] border-2 border-slate-200 dark:border-white/10 rounded-xl hover:shadow-lg transition-all cursor-pointer group"
             onClick={() => setShowUpgrade(true)}
