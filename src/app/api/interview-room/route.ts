@@ -1,4 +1,10 @@
+// src/app/api/interview-room/route.ts
+// ─── VERCEL-COMPATIBLE: Uses PostgreSQL via Prisma (no in-memory state) ───────
+
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ChatMessage {
   id: string;
@@ -8,31 +14,42 @@ interface ChatMessage {
   timestamp: string;
 }
 
-interface RoomData {
-  offer?: RTCSessionDescriptionInit;
-  answer?: RTCSessionDescriptionInit;
-  studentCandidates: RTCIceCandidateInit[];
-  interviewerCandidates: RTCIceCandidateInit[];
-  messages: ChatMessage[];
-  createdAt: number;
-  offerTimestamp: number;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const rooms = new Map<string, RoomData>();
-
-function getOrCreateRoom(sessionId: string): RoomData {
-  if (!rooms.has(sessionId)) {
-    rooms.set(sessionId, {
+async function getOrCreateRoom(sessionId: string) {
+  // Upsert: create if missing, return existing if present
+  return prisma.signalingRoom.upsert({
+    where: { id: sessionId },
+    create: {
+      id: sessionId,
+      offer: undefined,
+      answer: undefined,
       studentCandidates: [],
       interviewerCandidates: [],
       messages: [],
-      createdAt: Date.now(),
-      offerTimestamp: 0,
-    });
-    setTimeout(() => rooms.delete(sessionId), 4 * 60 * 60 * 1000);
-  }
-  return rooms.get(sessionId)!;
+      offerTimestamp: BigInt(0),
+    },
+    update: {}, // don't overwrite on read
+  });
 }
+
+// Auto-clean rooms older than 4 hours (best-effort, non-blocking)
+function scheduleCleanup(sessionId: string) {
+  setTimeout(async () => {
+    try {
+      await prisma.signalingRoom.deleteMany({
+        where: {
+          id: sessionId,
+          createdAt: { lt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
+        },
+      });
+    } catch {
+      // ignore
+    }
+  }, 4 * 60 * 60 * 1000);
+}
+
+// ─── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -43,28 +60,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
   }
 
-  const room = getOrCreateRoom(sessionId);
+  try {
+    const room = await getOrCreateRoom(sessionId);
 
-  if (role === 'student') {
+    if (role === 'student') {
+      return NextResponse.json({
+        sessionId,
+        offer: room.offer ?? null,
+        answer: room.answer ?? null,
+        // Student receives interviewer's ICE candidates
+        iceCandidates: room.interviewerCandidates as RTCIceCandidateInit[],
+        messages: room.messages as ChatMessage[],
+      });
+    }
+
+    // Interviewer receives student's offer + student ICE candidates
     return NextResponse.json({
       sessionId,
-      offer: room.offer,
-      answer: room.answer,
-      // Student gets interviewer's ICE candidates
-      iceCandidates: room.interviewerCandidates,
-      messages: room.messages,
+      offer: room.offer ?? null,
+      answer: room.answer ?? null,
+      studentCandidates: room.studentCandidates as RTCIceCandidateInit[],
+      messages: room.messages as ChatMessage[],
     });
+  } catch (error) {
+    console.error('GET /api/interview-room error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-
-  // Interviewer gets student's offer + student ICE candidates
-  return NextResponse.json({
-    sessionId,
-    offer: room.offer,
-    answer: room.answer,
-    studentCandidates: room.studentCandidates,
-    messages: room.messages,
-  });
 }
+
+// ─── POST ─────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   let body: any;
@@ -83,66 +107,127 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const room = getOrCreateRoom(sessionId);
-
-  switch (action) {
-    case 'offer':
-      // Only reset if this is a genuinely new offer (not a duplicate)
-      // Reset candidates so stale ones don't confuse the new connection
-      room.offer = offer;
-      room.answer = undefined;
-      room.studentCandidates = [];
-      room.interviewerCandidates = [];
-      room.offerTimestamp = Date.now();
-      return NextResponse.json({ success: true });
-
-    case 'answer':
-      room.answer = answer;
-      return NextResponse.json({ success: true });
-
-    case 'ice-candidate':
-      if (!candidate) {
-        return NextResponse.json({ error: 'candidate required' }, { status: 400 });
+  try {
+    switch (action) {
+      // ── Student sends offer ────────────────────────────────────────────────
+      case 'offer': {
+        await prisma.signalingRoom.upsert({
+          where: { id: sessionId },
+          create: {
+            id: sessionId,
+            offer,
+            answer: undefined,
+            studentCandidates: [],
+            interviewerCandidates: [],
+            messages: [],
+            offerTimestamp: BigInt(Date.now()),
+          },
+          update: {
+            offer,
+            answer: undefined,        // clear stale answer
+            studentCandidates: [],    // clear stale candidates
+            interviewerCandidates: [],
+            offerTimestamp: BigInt(Date.now()),
+            updatedAt: new Date(),
+          },
+        });
+        scheduleCleanup(sessionId);
+        return NextResponse.json({ success: true });
       }
-      if (role === 'student') {
-        // Avoid exact duplicates
-        const key = JSON.stringify(candidate);
-        const exists = room.studentCandidates.some(c => JSON.stringify(c) === key);
-        if (!exists) {
-          room.studentCandidates.push(candidate);
+
+      // ── Interviewer sends answer ───────────────────────────────────────────
+      case 'answer': {
+        await prisma.signalingRoom.upsert({
+          where: { id: sessionId },
+          create: {
+            id: sessionId,
+            answer,
+            studentCandidates: [],
+            interviewerCandidates: [],
+            messages: [],
+            offerTimestamp: BigInt(0),
+          },
+          update: {
+            answer,
+            updatedAt: new Date(),
+          },
+        });
+        return NextResponse.json({ success: true });
+      }
+
+      // ── ICE candidate ─────────────────────────────────────────────────────
+      case 'ice-candidate': {
+        if (!candidate) {
+          return NextResponse.json({ error: 'candidate required' }, { status: 400 });
         }
-      } else {
-        const key = JSON.stringify(candidate);
-        const exists = room.interviewerCandidates.some(c => JSON.stringify(c) === key);
-        if (!exists) {
-          room.interviewerCandidates.push(candidate);
-        }
-      }
-      return NextResponse.json({ success: true });
 
-    case 'message': {
-      if (!text?.trim()) {
-        return NextResponse.json({ error: 'text required' }, { status: 400 });
+        const room = await getOrCreateRoom(sessionId);
+        const key = JSON.stringify(candidate);
+
+        if (role === 'student') {
+          const existing = room.studentCandidates as RTCIceCandidateInit[];
+          if (!existing.some((c) => JSON.stringify(c) === key)) {
+            await prisma.signalingRoom.update({
+              where: { id: sessionId },
+              data: {
+                studentCandidates: [...existing, candidate],
+                updatedAt: new Date(),
+              },
+            });
+          }
+        } else {
+          const existing = room.interviewerCandidates as RTCIceCandidateInit[];
+          if (!existing.some((c) => JSON.stringify(c) === key)) {
+            await prisma.signalingRoom.update({
+              where: { id: sessionId },
+              data: {
+                interviewerCandidates: [...existing, candidate],
+                updatedAt: new Date(),
+              },
+            });
+          }
+        }
+
+        return NextResponse.json({ success: true });
       }
-      const message: ChatMessage = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        sender: role ?? 'unknown',
-        senderName: senderName ?? (role === 'student' ? 'Student' : 'Interviewer'),
-        text: text.trim(),
-        timestamp: new Date().toISOString(),
-      };
-      room.messages.push(message);
-      if (room.messages.length > 200) {
-        room.messages = room.messages.slice(-200);
+
+      // ── Chat message ──────────────────────────────────────────────────────
+      case 'message': {
+        if (!text?.trim()) {
+          return NextResponse.json({ error: 'text required' }, { status: 400 });
+        }
+
+        const message: ChatMessage = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          sender: role ?? 'unknown',
+          senderName: senderName ?? (role === 'student' ? 'Student' : 'Interviewer'),
+          text: text.trim(),
+          timestamp: new Date().toISOString(),
+        };
+
+        const room = await getOrCreateRoom(sessionId);
+        const messages = room.messages as ChatMessage[];
+        const updated = [...messages, message].slice(-200); // keep last 200
+
+        await prisma.signalingRoom.update({
+          where: { id: sessionId },
+          data: { messages: updated, updatedAt: new Date() },
+        });
+
+        return NextResponse.json({ success: true, message });
       }
-      return NextResponse.json({ success: true, message });
+
+      // ── Reset room ────────────────────────────────────────────────────────
+      case 'reset': {
+        await prisma.signalingRoom.deleteMany({ where: { id: sessionId } });
+        return NextResponse.json({ success: true });
+      }
+
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
-
-    case 'reset':
-      rooms.delete(sessionId);
-      return NextResponse.json({ success: true });
-
-    default:
-      return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+  } catch (error) {
+    console.error(`POST /api/interview-room [${action}] error:`, error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

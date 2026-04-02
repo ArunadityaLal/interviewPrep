@@ -202,6 +202,20 @@ model ManualBookingRequest {
   @@map("manual_booking_requests")
 }
 
+model SignalingRoom {
+  id                   String   @id  // sessionId as string
+  offer                Json?
+  answer               Json?
+  studentCandidates    Json     @default("[]")
+  interviewerCandidates Json    @default("[]")
+  messages             Json     @default("[]")
+  offerTimestamp       BigInt   @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("signaling_rooms")
+}
+
 enum UserRole {
   STUDENT
   INTERVIEWER
