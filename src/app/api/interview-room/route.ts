@@ -2,6 +2,7 @@
 // ─── VERCEL-COMPATIBLE: Uses PostgreSQL via Prisma (no in-memory state) ───────
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -12,6 +13,29 @@ interface ChatMessage {
   senderName: string;
   text: string;
   timestamp: string;
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const message = value as Record<string, unknown>;
+  return (
+    typeof message.id === 'string' &&
+    typeof message.sender === 'string' &&
+    typeof message.senderName === 'string' &&
+    typeof message.text === 'string' &&
+    typeof message.timestamp === 'string'
+  );
+}
+
+function parseChatMessages(value: unknown): ChatMessage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(isChatMessage);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -70,7 +94,7 @@ export async function GET(request: NextRequest) {
         answer: room.answer ?? null,
         // Student receives interviewer's ICE candidates
         iceCandidates: room.interviewerCandidates as RTCIceCandidateInit[],
-        messages: room.messages as ChatMessage[],
+        messages: parseChatMessages(room.messages),
       });
     }
 
@@ -80,7 +104,7 @@ export async function GET(request: NextRequest) {
       offer: room.offer ?? null,
       answer: room.answer ?? null,
       studentCandidates: room.studentCandidates as RTCIceCandidateInit[],
-      messages: room.messages as ChatMessage[],
+      messages: parseChatMessages(room.messages),
     });
   } catch (error) {
     console.error('GET /api/interview-room error:', error);
@@ -206,12 +230,15 @@ export async function POST(request: NextRequest) {
         };
 
         const room = await getOrCreateRoom(sessionId);
-        const messages = room.messages as ChatMessage[];
+        const messages = parseChatMessages(room.messages);
         const updated = [...messages, message].slice(-200); // keep last 200
 
         await prisma.signalingRoom.update({
           where: { id: sessionId },
-          data: { messages: updated, updatedAt: new Date() },
+          data: {
+            messages: updated as unknown as Prisma.InputJsonValue,
+            updatedAt: new Date(),
+          },
         });
 
         return NextResponse.json({ success: true, message });
