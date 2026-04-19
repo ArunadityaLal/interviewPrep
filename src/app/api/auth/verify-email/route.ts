@@ -94,7 +94,6 @@ export async function POST(request: NextRequest) {
         email: user.email,
         role: user.role,
       },
-      token,
       // Redirect URL based on role
       redirectUrl: user.role === 'STUDENT' ? '/student/dashboard' : 
                    user.role === 'INTERVIEWER' ? '/interviewer/dashboard' : 

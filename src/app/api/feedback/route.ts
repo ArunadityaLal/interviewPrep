@@ -5,7 +5,7 @@ import { HiringRecommendation } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, role } = await requireAuth();
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
 
@@ -27,6 +27,17 @@ export async function GET(request: NextRequest) {
 
     if (!feedback) {
       return NextResponse.json({ error: 'Feedback not found' }, { status: 404 });
+    }
+
+    const isOwner =
+      role === 'STUDENT'
+        ? feedback.session.student.userId === userId
+        : role === 'INTERVIEWER'
+          ? feedback.session.interviewer.userId === userId
+          : true;
+
+    if (!isOwner) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     return NextResponse.json({ feedback });

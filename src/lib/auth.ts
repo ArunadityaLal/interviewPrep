@@ -4,8 +4,15 @@ import { cookies } from 'next/headers';
 import { prisma } from './prisma';
 import { UserRole } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim());
+
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('Server misconfigured: JWT_SECRET is not set');
+  }
+  return secret;
+}
 
 export interface JWTPayload {
   id: any;
@@ -31,12 +38,13 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 // ========================================
 
 export function generateToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 export function verifyToken(token: string): JWTPayload | null {
+  const secret = getJwtSecret();
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return jwt.verify(token, secret) as JWTPayload;
   } catch {
     return null;
   }

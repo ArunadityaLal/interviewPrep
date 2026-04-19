@@ -11,7 +11,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={cn(
-          'rounded-2xl dark:border dark:border-white/10',
+          'w-full rounded-2xl dark:border dark:border-white/10',
           {
             'bg-white dark:bg-slate-900/88': variant === 'default',
             'bg-white dark:bg-slate-900/88 border-2 border-slate-200 dark:border-white/10': variant === 'bordered',

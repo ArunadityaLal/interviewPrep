@@ -125,63 +125,70 @@ export async function POST(request: NextRequest) {
     const beforeMins = (sessionStart.getTime() - slot.startTime.getTime()) / 60_000;
     const afterMins  = (slot.endTime.getTime()  - sessionEnd.getTime())    / 60_000;
 
-    const ops: any[] = [
-      // 1. Mark original slot as consumed
-      prisma.availabilitySlot.update({
-        where: { id: slot.id },
-        data:  { isBooked: true },
-      }),
+    const session = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.availabilitySlot.updateMany({
+        where: {
+          id: slot.id,
+          interviewerId: interviewer.id,
+          isBooked: false,
+          startTime: { lte: sessionStart },
+          endTime: { gte: sessionEnd },
+        },
+        data: { isBooked: true },
+      });
 
-      // 2. Create the session record
-      prisma.session.create({
+      if (claimed.count === 0) {
+        throw new Error('SLOT_UNAVAILABLE');
+      }
+
+      const quotaUpdated = await tx.studentProfile.updateMany({
+        where: {
+          id: studentProfile.id,
+          guidanceUsed: { lt: studentProfile.guidanceLimit },
+        },
+        data: { guidanceUsed: { increment: 1 } },
+      });
+
+      if (quotaUpdated.count === 0) {
+        throw new Error('LIMIT_REACHED');
+      }
+
+      const createdSession = await tx.session.create({
         data: {
-          studentId:       studentProfile.id,
-          interviewerId:   interviewer.id,
-          sessionType:     'GUIDANCE',
+          studentId: studentProfile.id,
+          interviewerId: interviewer.id,
+          sessionType: 'GUIDANCE',
           topic,
           durationMinutes: duration,
-          scheduledTime:   sessionStart,
+          scheduledTime: sessionStart,
         },
         include: { interviewer: true },
-      }),
+      });
 
-      // 3. Increment student's guidance usage
-      prisma.studentProfile.update({
-        where: { id: studentProfile.id },
-        data:  { guidanceUsed: { increment: 1 } },
-      }),
-    ];
-
-    // 4. Preserve BEFORE gap if worth keeping
-    if (beforeMins >= MIN_REMAINDER_MINUTES) {
-      ops.push(
-        prisma.availabilitySlot.create({
+      if (beforeMins >= MIN_REMAINDER_MINUTES) {
+        await tx.availabilitySlot.create({
           data: {
             interviewerId: interviewer.id,
-            startTime:     slot.startTime,
-            endTime:       sessionStart,
-            isBooked:      false,
+            startTime: slot.startTime,
+            endTime: sessionStart,
+            isBooked: false,
           },
-        }),
-      );
-    }
+        });
+      }
 
-    // 5. Preserve AFTER gap if worth keeping
-    if (afterMins >= MIN_REMAINDER_MINUTES) {
-      ops.push(
-        prisma.availabilitySlot.create({
+      if (afterMins >= MIN_REMAINDER_MINUTES) {
+        await tx.availabilitySlot.create({
           data: {
             interviewerId: interviewer.id,
-            startTime:     sessionEnd,
-            endTime:       slot.endTime,
-            isBooked:      false,
+            startTime: sessionEnd,
+            endTime: slot.endTime,
+            isBooked: false,
           },
-        }),
-      );
-    }
+        });
+      }
 
-    const results = await prisma.$transaction(ops);
-    const session = results[1]; // session is always index 1
+      return createdSession;
+    });
 
     // ── Send booking confirmation emails (non-blocking) ───────────────────────
     const emailData = {
@@ -217,6 +224,20 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
+    if (error.message === 'SLOT_UNAVAILABLE') {
+      return NextResponse.json(
+        { error: 'This slot was just booked. Please choose another time.' },
+        { status: 409 },
+      );
+    }
+
+    if (error.message === 'LIMIT_REACHED') {
+      return NextResponse.json(
+        { error: 'LIMIT_REACHED', message: 'Guidance session limit reached.' },
+        { status: 403 },
+      );
+    }
+
     console.error('Book guidance error:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },

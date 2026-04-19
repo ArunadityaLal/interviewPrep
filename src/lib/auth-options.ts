@@ -5,7 +5,13 @@ import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('Server misconfigured: JWT_SECRET is not set');
+  }
+  return secret;
+}
 
 interface JWTPayload {
   userId: number;
@@ -14,7 +20,7 @@ interface JWTPayload {
 }
 
 function generateToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' });
 }
 
 /**

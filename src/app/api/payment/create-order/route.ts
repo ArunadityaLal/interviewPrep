@@ -4,7 +4,7 @@ import { requireAuth, authErrorStatus } from '@/lib/auth';
 import Razorpay from 'razorpay';
 export const dynamic = 'force-dynamic';
 
-const PLAN_AMOUNT_PAISE = 100; // ₹99 in paise
+const PLAN_AMOUNT_PAISE = 100; // ₹1 in paise
 
 export async function POST() {
   try {

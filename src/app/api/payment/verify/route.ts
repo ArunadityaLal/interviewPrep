@@ -48,25 +48,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Guard: prevent double-processing
-    if (subscription.status === 'PAID') {
-      return NextResponse.json({ success: true, alreadyProcessed: true });
-    }
-
-    // ── 3. Calculate new plan period ─────────────────────────────────────────
-    // If student already has an active plan, extend from its expiry date.
-    // Otherwise start from today.
-    const now = new Date();
-    const currentExpiry = subscription.student.planExpiresAt;
-    const startFrom = currentExpiry && currentExpiry > now ? currentExpiry : now;
-    const validUntil = new Date(startFrom);
-    validUntil.setMonth(validUntil.getMonth() + 1);
-
-    // ── 4. Update subscription + student profile atomically ──────────────────
-    await prisma.$transaction([
-      // Mark subscription as PAID
-      prisma.subscription.update({
+    // ── 3. Update subscription + student profile atomically and idempotently ─
+    const paymentResult = await prisma.$transaction(async (tx) => {
+      const existingSubscription = await tx.subscription.findUnique({
         where: { id: subscription.id },
+        select: { id: true, status: true, studentId: true },
+      });
+
+      if (!existingSubscription) {
+        throw new Error('Order not found');
+      }
+
+      const currentStudent = await tx.studentProfile.findUnique({
+        where: { id: existingSubscription.studentId },
+        select: { planExpiresAt: true },
+      });
+
+      if (!currentStudent) {
+        throw new Error('Student profile not found');
+      }
+
+      if (existingSubscription.status === 'PAID') {
+        return {
+          alreadyProcessed: true,
+          validUntil: currentStudent.planExpiresAt,
+        };
+      }
+
+      const now = new Date();
+      const startFrom =
+        currentStudent.planExpiresAt && currentStudent.planExpiresAt > now
+          ? currentStudent.planExpiresAt
+          : now;
+      const validUntil = new Date(startFrom);
+      validUntil.setMonth(validUntil.getMonth() + 1);
+
+      const claim = await tx.subscription.updateMany({
+        where: {
+          id: existingSubscription.id,
+          status: 'PENDING',
+        },
         data: {
           razorpayPaymentId: razorpay_payment_id,
           razorpaySignature: razorpay_signature,
@@ -75,20 +96,60 @@ export async function POST(request: NextRequest) {
           validFrom: startFrom,
           validUntil,
         },
-      }),
-      // Reset usage counters + set new limits + extend expiry
-      prisma.studentProfile.update({
-        where: { id: subscription.studentId },
+      });
+
+      if (claim.count === 0) {
+        const latest = await tx.subscription.findUnique({
+          where: { id: existingSubscription.id },
+          select: { status: true },
+        });
+
+        if (latest?.status === 'PAID') {
+          return {
+            alreadyProcessed: true,
+            validUntil: currentStudent.planExpiresAt,
+          };
+        }
+
+        throw new Error('Payment state conflict');
+      }
+
+      await tx.studentProfile.update({
+        where: { id: existingSubscription.studentId },
         data: {
           planType: 'PRO',
-          interviewsUsed: 0,          // reset usage for the new month
+          interviewsUsed: 0,
           guidanceUsed: 0,
           interviewsLimit: MONTHLY_INTERVIEW_LIMIT,
           guidanceLimit: MONTHLY_GUIDANCE_LIMIT,
           planExpiresAt: validUntil,
         },
-      }),
-    ]);
+      });
+
+      return {
+        alreadyProcessed: false,
+        validUntil,
+      };
+    });
+
+    if (paymentResult.alreadyProcessed) {
+      return NextResponse.json({
+        success: true,
+        alreadyProcessed: true,
+        plan: paymentResult.validUntil
+          ? {
+              type: 'PRO',
+              interviewsLimit: MONTHLY_INTERVIEW_LIMIT,
+              guidanceLimit: MONTHLY_GUIDANCE_LIMIT,
+              validUntil: paymentResult.validUntil.toISOString(),
+            }
+          : undefined,
+      });
+    }
+
+    if (!paymentResult.validUntil) {
+      throw new Error('Missing subscription validity after payment processing');
+    }
 
     return NextResponse.json({
       success: true,
@@ -96,7 +157,7 @@ export async function POST(request: NextRequest) {
         type: 'PRO',
         interviewsLimit: MONTHLY_INTERVIEW_LIMIT,
         guidanceLimit: MONTHLY_GUIDANCE_LIMIT,
-        validUntil: validUntil.toISOString(),
+        validUntil: paymentResult.validUntil.toISOString(),
       },
     });
   } catch (error: any) {

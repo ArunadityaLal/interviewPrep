@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { authErrorStatus, requireAuth } from '@/lib/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,56 @@ function parseChatMessages(value: unknown): ChatMessage[] {
   }
 
   return value.filter(isChatMessage);
+}
+
+type RoomRole = 'student' | 'interviewer';
+
+function isValidRoomRole(value: unknown): value is RoomRole {
+  return value === 'student' || value === 'interviewer';
+}
+
+function roomErrorStatus(message: string): number {
+  if (message === 'Session not found') return 404;
+  if (message === 'Invalid sessionId') return 400;
+  return authErrorStatus(message);
+}
+
+async function authorizeRoomAccess(sessionIdRaw: string, requestedRole: RoomRole | null) {
+  const auth = await requireAuth(['STUDENT', 'INTERVIEWER']);
+
+  const sessionId = Number(sessionIdRaw);
+  if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    throw new Error('Invalid sessionId');
+  }
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      student: { select: { userId: true } },
+      interviewer: { select: { userId: true } },
+    },
+  });
+
+  if (!session) {
+    throw new Error('Session not found');
+  }
+
+  const effectiveRole: RoomRole = auth.role === 'STUDENT' ? 'student' : 'interviewer';
+  if (requestedRole && requestedRole !== effectiveRole) {
+    throw new Error('Forbidden');
+  }
+
+  const isOwner =
+    effectiveRole === 'student'
+      ? session.student.userId === auth.userId
+      : session.interviewer.userId === auth.userId;
+
+  if (!isOwner) {
+    throw new Error('Forbidden');
+  }
+
+  return { effectiveRole };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -78,16 +129,22 @@ function scheduleCleanup(sessionId: string) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
-  const role = searchParams.get('role');
+  const roleParam = searchParams.get('role');
 
   if (!sessionId) {
     return NextResponse.json({ error: 'sessionId required' }, { status: 400 });
   }
 
+  if (roleParam && !isValidRoomRole(roleParam)) {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+  }
+
   try {
+    const requestedRole: RoomRole | null = roleParam && isValidRoomRole(roleParam) ? roleParam : null;
+    const { effectiveRole } = await authorizeRoomAccess(sessionId, requestedRole);
     const room = await getOrCreateRoom(sessionId);
 
-    if (role === 'student') {
+    if (effectiveRole === 'student') {
       return NextResponse.json({
         sessionId,
         offer: room.offer ?? null,
@@ -108,7 +165,8 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('GET /api/interview-room error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: roomErrorStatus(message) });
   }
 }
 
@@ -122,7 +180,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { sessionId, action, role, offer, answer, candidate, text, senderName } = body;
+  const { sessionId, action, role: roleParam, offer, answer, candidate, text, senderName } = body;
 
   if (!sessionId || !action) {
     return NextResponse.json(
@@ -131,7 +189,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (roleParam && !isValidRoomRole(roleParam)) {
+    return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+  }
+
   try {
+    const requestedRole: RoomRole | null = roleParam && isValidRoomRole(roleParam) ? roleParam : null;
+    const { effectiveRole } = await authorizeRoomAccess(sessionId, requestedRole);
+
     switch (action) {
       // ── Student sends offer ────────────────────────────────────────────────
       case 'offer': {
@@ -188,7 +253,7 @@ export async function POST(request: NextRequest) {
         const room = await getOrCreateRoom(sessionId);
         const key = JSON.stringify(candidate);
 
-        if (role === 'student') {
+        if (effectiveRole === 'student') {
           const existing = room.studentCandidates as RTCIceCandidateInit[];
           if (!existing.some((c) => JSON.stringify(c) === key)) {
             await prisma.signalingRoom.update({
@@ -223,8 +288,8 @@ export async function POST(request: NextRequest) {
 
         const message: ChatMessage = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          sender: role ?? 'unknown',
-          senderName: senderName ?? (role === 'student' ? 'Student' : 'Interviewer'),
+          sender: effectiveRole,
+          senderName: senderName ?? (effectiveRole === 'student' ? 'Student' : 'Interviewer'),
           text: text.trim(),
           timestamp: new Date().toISOString(),
         };
@@ -255,6 +320,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error(`POST /api/interview-room [${action}] error:`, error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: roomErrorStatus(message) });
   }
 }

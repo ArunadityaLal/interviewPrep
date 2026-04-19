@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Outfit, DM_Sans } from 'next/font/google';
 import './globals.css';
 
@@ -23,6 +23,12 @@ export const metadata: Metadata = {
   description: 'Live 1-to-1 interview preparation with industry experts',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -31,7 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${outfit.variable} ${dmSans.variable} font-sans antialiased`}
+        className={`${inter.variable} ${outfit.variable} ${dmSans.variable} font-sans antialiased overflow-x-hidden`}
       >
         {children}
       </body>

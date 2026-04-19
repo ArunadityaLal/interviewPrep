@@ -56,12 +56,12 @@ function AIAssistButton({
         type="button"
         onClick={handleClick}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+        className="inline-flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap
                    bg-gradient-to-r from-violet-500 to-indigo-500 text-white
                    hover:from-violet-600 hover:to-indigo-600
                    disabled:opacity-60 disabled:cursor-not-allowed
                    transition-all shadow-sm hover:shadow-md hover:shadow-indigo-200
-                   active:scale-95 select-none"
+                   active:scale-[0.98] touch-manipulation select-none"
       >
         {loading ? (
           <>
@@ -202,13 +202,21 @@ export default function InterviewerFeedbackPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="flex items-center gap-3 text-slate-500">
-          <svg className="animate-spin h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Loading session...
+      <div className="max-w-4xl mx-auto px-1 sm:px-0 animate-pulse py-4">
+        <div className="h-8 w-52 bg-slate-200 rounded-lg mb-3" />
+        <div className="h-4 w-72 bg-slate-200 rounded mb-6" />
+        <div className="h-16 w-full bg-slate-200 rounded-xl mb-6" />
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8 space-y-4">
+          <div className="h-5 w-36 bg-slate-200 rounded" />
+          <div className="h-24 w-full bg-slate-200 rounded-xl" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="h-11 bg-slate-200 rounded-xl" />
+            <div className="h-11 bg-slate-200 rounded-xl" />
+            <div className="h-11 bg-slate-200 rounded-xl" />
+            <div className="h-11 bg-slate-200 rounded-xl" />
+          </div>
+          <div className="h-24 w-full bg-slate-200 rounded-xl" />
+          <div className="h-11 w-full bg-slate-200 rounded-xl" />
         </div>
       </div>
     );
@@ -219,11 +227,11 @@ export default function InterviewerFeedbackPage() {
   const isGuidance = session.sessionType === 'GUIDANCE';
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto px-1 sm:px-0">
       {/* Page header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-display font-bold text-slate-900 mb-2">Submit Feedback</h1>
-        <p className="text-slate-600">
+        <h1 className="text-2xl sm:text-3xl font-display font-bold text-slate-900 mb-2">Submit Feedback</h1>
+        <p className="text-slate-600 text-sm sm:text-base break-words">
           For <span className="font-semibold text-slate-800">{session.student.name}</span>'s{' '}
           {isGuidance ? 'guidance' : 'interview'} session
         </p>
@@ -251,7 +259,7 @@ export default function InterviewerFeedbackPage() {
         </div>
       </div>
 
-      <Card variant="elevated" className="p-8">
+      <Card variant="elevated" className="p-5 sm:p-8">
         <form onSubmit={handleSubmit} className="space-y-6">
 
           {/* Summary — common */}
@@ -275,7 +283,7 @@ export default function InterviewerFeedbackPage() {
             </>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Select label="Technical Depth (1-5)" value={formData.technicalDepth}
                   onChange={(e) => setFormData({ ...formData, technicalDepth: e.target.value })}
                   options={[

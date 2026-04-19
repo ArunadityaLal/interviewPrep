@@ -93,7 +93,6 @@ export async function POST(request: NextRequest) {
         role: user.role,
         hasProfile: user.role === 'STUDENT' ? !!user.studentProfile : !!user.interviewerProfile,
       },
-      token,
     });
   } catch (error) {
     console.error('Login error:', error);

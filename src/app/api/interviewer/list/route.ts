@@ -1,38 +1,61 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, authErrorStatus } from '@/lib/auth';
 
-export async function GET() {
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+export async function GET(request: NextRequest) {
   try {
     await requireAuth(['STUDENT']);
 
-    const interviewers = await prisma.interviewerProfile.findMany({
-      where: {
-        status: 'APPROVED',
-        sessionTypesOffered: { has: 'GUIDANCE' },
-      },
-      include: {
-        // ✅ Include user so profilePicture is available on the frontend
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            profilePicture: true,
-            provider: true,
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, Number(searchParams.get('page') || '1'));
+    const pageSizeRaw = Number(searchParams.get('pageSize') || `${DEFAULT_PAGE_SIZE}`);
+    const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, pageSizeRaw));
+
+    const where = {
+      status: 'APPROVED' as const,
+      sessionTypesOffered: { has: 'GUIDANCE' as const },
+    };
+
+    const [total, interviewers] = await Promise.all([
+      prisma.interviewerProfile.count({ where }),
+      prisma.interviewerProfile.findMany({
+        where,
+        include: {
+          // ✅ Include user so profilePicture is available on the frontend
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profilePicture: true,
+              provider: true,
+            },
+          },
+          availabilitySlots: {
+            where: {
+              startTime: { gte: new Date() },
+              isBooked: false,
+            },
+            orderBy: { startTime: 'asc' },
           },
         },
-        availabilitySlots: {
-          where: {
-            startTime: { gte: new Date() },
-            isBooked: false,
-          },
-          orderBy: { startTime: 'asc' },
-        },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return NextResponse.json({
+      interviewers,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
       },
     });
-
-    return NextResponse.json({ interviewers });
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || 'Internal server error' },

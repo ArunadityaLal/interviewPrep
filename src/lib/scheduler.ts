@@ -58,35 +58,43 @@ export function startScheduler() {
       console.log(`🔔 Sending reminders for ${upcomingSessions.length} session(s)...`);
 
       for (const session of upcomingSessions) {
-        const reminderData = {
-          sessionType:     session.sessionType as 'GUIDANCE' | 'INTERVIEW',
-          scheduledTime:   session.scheduledTime,
-          durationMinutes: session.durationMinutes,
-          topic:           session.topic,
-          role:            session.role,
-          difficulty:      session.difficulty,
-          interviewType:   session.interviewType,
+        try {
+          const reminderData = {
+            sessionType:     session.sessionType as 'GUIDANCE' | 'INTERVIEW',
+            scheduledTime:   session.scheduledTime,
+            durationMinutes: session.durationMinutes,
+            topic:           session.topic,
+            role:            session.role,
+            difficulty:      session.difficulty,
+            interviewType:   session.interviewType,
 
-          studentName:       session.student.name,
-          studentEmail:      session.student.user.email,
-          studentCollege:    session.student.college,
-          studentBranch:     session.student.branch,
-          studentTargetRole: session.student.targetRole,
+            studentName:       session.student.name,
+            studentEmail:      session.student.user.email,
+            studentCollege:    session.student.college,
+            studentBranch:     session.student.branch,
+            studentTargetRole: session.student.targetRole,
 
-          interviewerName:              session.interviewer.name,
-          interviewerEmail:             session.interviewer.user.email,
-          interviewerCompanies:         session.interviewer.companies,
-          interviewerYearsOfExperience: session.interviewer.yearsOfExperience,
-          interviewerLinkedinUrl:       session.interviewer.linkedinUrl,
-        };
+            interviewerName:              session.interviewer.name,
+            interviewerEmail:             session.interviewer.user.email,
+            interviewerCompanies:         session.interviewer.companies,
+            interviewerYearsOfExperience: session.interviewer.yearsOfExperience,
+            interviewerLinkedinUrl:       session.interviewer.linkedinUrl,
+          };
 
-        // Send both emails
-        await Promise.all([
-          sendReminderToStudent(reminderData),
-          sendReminderToInterviewer(reminderData),
-        ]);
+          await Promise.all([
+            sendReminderToStudent(reminderData),
+            sendReminderToInterviewer(reminderData),
+          ]);
 
-        console.log(`✅ Reminder sent for session ${session.id} (${session.sessionType})`);
+          await prisma.session.update({
+            where: { id: session.id },
+            data: { reminderSent: true },
+          });
+
+          console.log(`✅ Reminder sent for session ${session.id} (${session.sessionType})`);
+        } catch (sessionError) {
+          console.error(`❌ Reminder failed for session ${session.id}:`, sessionError);
+        }
       }
     } catch (error) {
       console.error('❌ Scheduler error:', error);
